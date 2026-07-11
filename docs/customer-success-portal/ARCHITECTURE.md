@@ -1,6 +1,6 @@
 # Customer Success Portal Architecture
 
-Status: Implemented for the first tracer slice; rendered certification pending
+Status: CSSC-11 implemented with rendered certification pending; CSSC-12 partial tracer under review
 
 ## Decision
 
@@ -66,6 +66,31 @@ reply, note, export, attachment, privileged adapter actions, Tracker create or
 import actions, saved-filter writes, or view-preference writes. Search and manual
 refresh are query-only. This keeps the first live proof reversible while queue
 accuracy, configuration, access denial, and rendered ergonomics are certified.
+
+## CSSC-12 Partial Detail Boundary
+
+The first detail tracer stays inside the standalone Customer Success route and
+uses `?issue=CSI-N` query state rather than Tracker's editable issue panel.
+Selection resolves the issue only when `identifier`, configured support
+project, and `tracker.ids.NoParent` all match. Transcript and activity remain
+separate subscriptions; they are never merged into a synthetic timestamp
+timeline.
+
+The browser transcript query is intentionally narrower than the final product.
+It requests only exact `support_mirror_customer`, `support_mirror_bot`, and
+`support_agent_joined` comments authored by `core.account.System`. Restricted,
+internal, unknown, untyped, public, and archived comments are excluded in the
+Huly query before browser delivery. Client classification remains a secondary
+fail-closed guard, not the authorization boundary.
+
+CSSC-12 cannot close until an authoritative server-side projection supplies
+public, internal, and role-gated restricted lanes with stable event ids,
+provenance, cursor/order semantics, and bounded pagination. UI concealment of a
+broader raw comment subscription is explicitly prohibited.
+
+English and French are the authored operator locales for this delivery. Other
+locale files intentionally carry English fallback text so package loading and
+locale shape remain valid until those translations are commissioned.
 
 ## Registration Surface
 

@@ -6,6 +6,16 @@
     "TakeoverState": "Handoff state",
     "SlaDue": "SLA due",
     "LastActivity": "Last activity",
-    "NoTickets": "No support tickets"
+    "NoTickets": "No support tickets",
+    "BackToInbox": "Back to live inbox",
+    "Conversation": "Conversation",
+    "Activity": "Activity",
+    "Customer": "Customer",
+    "Bot": "Virtual assistant",
+    "SupportAgent": "Support agent",
+    "System": "System",
+    "NoMessages": "No conversation messages",
+    "NoActivity": "No ticket activity",
+    "TicketNotFound": "Ticket unavailable"
   }
 }

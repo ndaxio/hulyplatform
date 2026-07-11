@@ -44,6 +44,20 @@ describe('Customer Success inbox viewlet', () => {
 
     expect(presenters).not.toContain(tracker.component.PriorityEditor)
     expect(presenters).not.toContain(tracker.component.StatusEditor)
+    expect(presenters).toContain(customerSuccess.component.TicketPresenter)
+    expect(presenters).not.toContain(tracker.component.IssuePresenter)
+    expect(presenters).not.toContain(tracker.component.TitlePresenter)
+
+    const ticketPresenters = liveInboxViewletConfig.filter(
+      (entry) => typeof entry !== 'string' && entry.presenter === customerSuccess.component.TicketPresenter
+    )
+    expect(ticketPresenters).toHaveLength(2)
+    expect(ticketPresenters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ props: expect.objectContaining({ field: 'identifier', interactive: false }) }),
+        expect.objectContaining({ props: expect.objectContaining({ field: 'title' }) })
+      ])
+    )
   })
 })
 

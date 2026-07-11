@@ -7,11 +7,13 @@
 import type { Resources } from '@hcengineering/platform'
 
 import LiveInbox from './components/LiveInbox.svelte'
+import TicketPresenter from './components/TicketPresenter.svelte'
 import { resolveLocation } from './routing/resolveLocation'
 
 export default async (): Promise<Resources> => ({
   component: {
-    LiveInbox
+    LiveInbox,
+    TicketPresenter
   },
   resolver: {
     Location: resolveLocation

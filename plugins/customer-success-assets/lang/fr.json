@@ -6,6 +6,16 @@
     "TakeoverState": "État du transfert",
     "SlaDue": "Échéance de l'ANS",
     "LastActivity": "Dernière activité",
-    "NoTickets": "Aucun billet de soutien"
+    "NoTickets": "Aucun billet de soutien",
+    "BackToInbox": "Retour à la boîte de réception",
+    "Conversation": "Conversation",
+    "Activity": "Activité",
+    "Customer": "Client",
+    "Bot": "Assistant virtuel",
+    "SupportAgent": "Agent de soutien",
+    "System": "Système",
+    "NoMessages": "Aucun message de conversation",
+    "NoActivity": "Aucune activité du billet",
+    "TicketNotFound": "Billet indisponible"
   }
 }

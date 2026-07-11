@@ -21,7 +21,8 @@ const customerSuccess = plugin(customerSuccessId, {
     CustomerSuccess: '' as Ref<Doc>
   },
   component: {
-    LiveInbox: '' as AnyComponent
+    LiveInbox: '' as AnyComponent,
+    TicketPresenter: '' as AnyComponent
   },
   metadata: {
     SupportProjectId: '' as Metadata<Ref<Project>>
@@ -36,7 +37,17 @@ const customerSuccess = plugin(customerSuccessId, {
     TakeoverState: '' as IntlString,
     SlaDue: '' as IntlString,
     LastActivity: '' as IntlString,
-    NoTickets: '' as IntlString
+    NoTickets: '' as IntlString,
+    BackToInbox: '' as IntlString,
+    Conversation: '' as IntlString,
+    Activity: '' as IntlString,
+    Customer: '' as IntlString,
+    Bot: '' as IntlString,
+    SupportAgent: '' as IntlString,
+    System: '' as IntlString,
+    NoMessages: '' as IntlString,
+    NoActivity: '' as IntlString,
+    TicketNotFound: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>

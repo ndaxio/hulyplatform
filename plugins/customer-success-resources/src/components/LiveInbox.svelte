@@ -17,6 +17,9 @@
     Header,
     IconRedo,
     Loading,
+    getCurrentResolvedLocation,
+    location,
+    navigate,
     SearchInput,
     SectionEmpty
   } from '@hcengineering/ui'
@@ -30,6 +33,8 @@
     resolveProjectLoadState,
     resolveSupportProjectId
   } from '../live-inbox'
+  import { closeConversationQuery } from '../conversation-detail'
+  import ConversationDetail from './ConversationDetail.svelte'
 
   type InboxState = 'loading' | 'ready' | 'denied' | 'error'
 
@@ -51,6 +56,7 @@
   let resultQuery: DocumentQuery<Issue> = query
   let contentLoading = true
   let contentCount = 0
+  $: selectedIssueIdentifier = typeof $location.query?.issue === 'string' ? $location.query.issue : undefined
   $: contentState = resolveContentState(contentLoading, contentCount)
 
   function updateSearchQuery (value: string): void {
@@ -108,12 +114,21 @@
     await loadProject()
   }
 
+  function closeConversation (): void {
+    const loc = getCurrentResolvedLocation()
+    loc.query = closeConversationQuery(loc.query)
+    loc.fragment = ''
+    navigate(loc)
+  }
+
   onMount(() => {
     void refreshInbox()
   })
 </script>
 
-{#if state === 'loading'}
+{#if selectedIssueIdentifier !== undefined}
+  <ConversationDetail {projectId} issueIdentifier={selectedIssueIdentifier} onClose={closeConversation} />
+{:else if state === 'loading'}
   <Loading />
 {:else if state === 'denied'}
   <SectionEmpty icon={inbox.icon.Inbox} label={presentation.string.AccessDenied} />

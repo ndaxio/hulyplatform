@@ -22,7 +22,8 @@ export const liveInboxViewletConfig: Viewlet['config'] = [
   {
     key: '',
     label: tracker.string.Identifier,
-    presenter: tracker.component.IssuePresenter,
+    presenter: customerSuccess.component.TicketPresenter,
+    props: { field: 'identifier', interactive: false },
     displayProps: { key: 'issue', fixed: 'left' }
   },
   {
@@ -35,8 +36,8 @@ export const liveInboxViewletConfig: Viewlet['config'] = [
   {
     key: '',
     label: tracker.string.Title,
-    presenter: tracker.component.TitlePresenter,
-    props: { grow: true, minWidth: '12rem' },
+    presenter: customerSuccess.component.TicketPresenter,
+    props: { field: 'title', grow: true, minWidth: '12rem' },
     displayProps: { key: 'title', grow: true }
   },
   {
