@@ -34,6 +34,7 @@ import { guestId, createModel as guestModel } from '@hcengineering/model-guest'
 import hr, { hrId, createModel as hrModel } from '@hcengineering/model-hr'
 import inventory, { inventoryId, createModel as inventoryModel } from '@hcengineering/model-inventory'
 import lead, { leadId, createModel as leadModel } from '@hcengineering/model-lead'
+import { customerSuccessId, createModel as customerSuccessModel } from '@hcengineering/model-customer-success'
 import { mediaId, createModel as mediaModel } from '@hcengineering/model-media'
 import notification, { notificationId, createModel as notificationModel } from '@hcengineering/model-notification'
 import { preferenceId, createModel as preferenceModel } from '@hcengineering/model-preference'
@@ -371,6 +372,7 @@ export default function buildModel (): Builder {
     ],
     [timeModel, timeId],
     [supportModel, supportId],
+    [customerSuccessModel, customerSuccessId],
     [desktopPreferencesModel, desktopPreferencesId],
     [desktopDownloadsModel, desktopDownloadsId],
 

@@ -1,0 +1,11 @@
+{
+  "string": {
+    "CustomerSuccess": "Customer Success",
+    "LiveInbox": "Live inbox",
+    "Refresh": "Refresh",
+    "TakeoverState": "Handoff state",
+    "SlaDue": "SLA due",
+    "LastActivity": "Last activity",
+    "NoTickets": "No support tickets"
+  }
+}

@@ -172,7 +172,9 @@
     {/if}
     <div class="min-h-3 flex-no-shrink" />
 
-    <SavedView alias={currentApplication?.alias} on:select={(res) => (menuSelection = res.detail)} />
+    {#if !model.hideSavedViews}
+      <SavedView alias={currentApplication?.alias} on:select={(res) => (menuSelection = res.detail)} />
+    {/if}
     {#if starred.length > 0 && !model.hideStarred}
       <StarredNav
         label={preference.string.Starred}

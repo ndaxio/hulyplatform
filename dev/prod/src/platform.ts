@@ -25,6 +25,7 @@ import { cardId } from '@hcengineering/card'
 import { chunterId } from '@hcengineering/chunter'
 import client, { clientId } from '@hcengineering/client'
 import contactPlugin, { contactId } from '@hcengineering/contact'
+import customerSuccess, { customerSuccessId } from '@hcengineering/customer-success'
 import { converterId } from '@hcengineering/converter'
 import { documentsId } from '@hcengineering/controlled-documents'
 import { desktopPreferencesId } from '@hcengineering/desktop-preferences'
@@ -62,7 +63,7 @@ import { templatesId } from '@hcengineering/templates'
 import { testManagementId } from '@hcengineering/test-management'
 import textEditor, { textEditorId } from '@hcengineering/text-editor'
 import { timeId } from '@hcengineering/time'
-import tracker, { trackerId } from '@hcengineering/tracker'
+import tracker, { trackerId, type Project } from '@hcengineering/tracker'
 import { trainingId } from '@hcengineering/training'
 import uiPlugin from '@hcengineering/ui'
 import { uploaderId } from '@hcengineering/uploader'
@@ -92,6 +93,7 @@ import '@hcengineering/calendar-assets'
 import '@hcengineering/card-assets'
 import '@hcengineering/chunter-assets'
 import '@hcengineering/contact-assets'
+import '@hcengineering/customer-success-assets'
 import '@hcengineering/controlled-documents-assets'
 import '@hcengineering/desktop-preferences-assets'
 import '@hcengineering/diffview-assets'
@@ -143,7 +145,7 @@ import '@hcengineering/huly-mail-assets'
 import '@hcengineering/ai-assistant-assets'
 import '@hcengineering/rating-assets'
 
-import { coreId } from '@hcengineering/core'
+import { coreId, type Ref } from '@hcengineering/core'
 import presentation, { loadServerConfig, createFileStorage, presentationId } from '@hcengineering/presentation'
 
 import { setMetadata } from '@hcengineering/platform'
@@ -154,6 +156,7 @@ import { uiId } from '@hcengineering/ui/src/plugin'
 import { configureAnalytics } from './analytics'
 
 export interface Config {
+  CUSTOMER_SUCCESS_PROJECT_ID?: string
   ACCOUNTS_URL: string
   UPLOAD_URL: string
   FILES_URL: string
@@ -319,6 +322,13 @@ function configureI18n(): void {
   addStringsLoader(calendarId, async (lang: string) => await import(`@hcengineering/calendar-assets/lang/${lang}.json`))
   addStringsLoader(chunterId, async (lang: string) => await import(`@hcengineering/chunter-assets/lang/${lang}.json`))
   addStringsLoader(contactId, async (lang: string) => await import(`@hcengineering/contact-assets/lang/${lang}.json`))
+  addStringsLoader(
+    customerSuccessId,
+    async (lang: string) =>
+      await (lang === 'fr'
+        ? import('@hcengineering/customer-success-assets/lang/fr.json')
+        : import('@hcengineering/customer-success-assets/lang/en.json'))
+  )
   addStringsLoader(driveId, async (lang: string) => await import(`@hcengineering/drive-assets/lang/${lang}.json`))
   addStringsLoader(gmailId, async (lang: string) => await import(`@hcengineering/gmail-assets/lang/${lang}.json`))
   addStringsLoader(hrId, async (lang: string) => await import(`@hcengineering/hr-assets/lang/${lang}.json`))
@@ -542,6 +552,12 @@ export async function configurePlatform() {
   setMetadata(support.metadata.ReportBugLink, myBranding.support?.reportBugLink ?? reportBugLink)
   setMetadata(support.metadata.DocsLink, myBranding.support?.docsLink ?? docsLink)
   setMetadata(support.metadata.PrivacyPolicyLink, myBranding.support?.privacyPolicyLink ?? privacyPolicyLink)
+  if (config.CUSTOMER_SUCCESS_PROJECT_ID !== undefined) {
+    setMetadata(
+      customerSuccess.metadata.SupportProjectId,
+      config.CUSTOMER_SUCCESS_PROJECT_ID as Ref<Project>
+    )
+  }
 
   const languages = myBranding.languages
     ? myBranding.languages.split(',').map((l) => l.trim())
@@ -628,6 +644,11 @@ export async function configurePlatform() {
   addLocation(aiBotId, async () => await import('@hcengineering/ai-bot-resources'))
 
   addLocation(trackerId, async () => await import(/* webpackChunkName: "tracker" */ '@hcengineering/tracker-resources'))
+  addLocation(
+    customerSuccessId,
+    async () =>
+      await import(/* webpackChunkName: "customer-success" */ '@hcengineering/customer-success-resources')
+  )
   addLocation(boardId, async () => await import(/* webpackChunkName: "board" */ '@hcengineering/board-resources'))
   addLocation(hrId, async () => await import(/* webpackChunkName: "hr" */ '@hcengineering/hr-resources'))
   addLocation(bitrixId, async () => await import(/* webpackChunkName: "bitrix" */ '@hcengineering/bitrix-resources'))

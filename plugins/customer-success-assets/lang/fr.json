@@ -1,0 +1,11 @@
+{
+  "string": {
+    "CustomerSuccess": "Succès client",
+    "LiveInbox": "Boîte de réception en direct",
+    "Refresh": "Actualiser",
+    "TakeoverState": "État du transfert",
+    "SlaDue": "Échéance de l'ANS",
+    "LastActivity": "Dernière activité",
+    "NoTickets": "Aucun billet de soutien"
+  }
+}

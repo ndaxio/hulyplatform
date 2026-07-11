@@ -16,6 +16,7 @@
   export let createItemLabel: IntlString | undefined = undefined
   export let createItemEvent: string | undefined = undefined
   export let createItemDialogProps = { shouldSaveDraft: true }
+  export let readonly: boolean = false
 
   const hierarchy = getClient().getHierarchy()
 
@@ -109,7 +110,8 @@
         viewOptions,
         viewOptionsConfig: viewlet.viewOptions?.other,
         space,
-        query
+        query,
+        readonly
       }}
     />
   {/if}

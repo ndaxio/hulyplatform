@@ -43,6 +43,7 @@
   import { createEventDispatcher } from 'svelte'
   import { fade } from 'svelte/transition'
   import { showMenu } from '../../actions'
+  import { isListMutationEnabled } from '../../listReadonly'
   import { FocusSelection, SelectionFocusProvider, focusStore } from '../../selection'
   import ListHeader from './ListHeader.svelte'
   import ListItem from './ListItem.svelte'
@@ -237,6 +238,7 @@
   }
 
   function dragOverCat (ev: MouseEvent): void {
+    if (!isListMutationEnabled(readonly)) return
     ev.preventDefault()
     ev.stopPropagation()
   }
@@ -249,6 +251,7 @@
   }
 
   function dragEnterCat (ev: MouseEvent): void {
+    if (!isListMutationEnabled(readonly)) return
     ev.preventDefault()
     if (dragItemIndex === undefined && dragItem.doc !== undefined) {
       const index = items.findIndex((p) => p._id === dragItem.doc?._id)
@@ -274,6 +277,7 @@
   }
 
   function dragLeaveCat (ev: MouseEvent): void {
+    if (!isListMutationEnabled(readonly)) return
     ev.stopPropagation()
     if (dragItemIndex !== undefined) {
       items.splice(dragItemIndex, 1)
@@ -283,6 +287,7 @@
   }
 
   function dragItemLeave (ev: MouseEvent, i: number): void {
+    if (!isListMutationEnabled(readonly)) return
     if (dragItemIndex !== undefined) {
       const isLastItem = i === limited.length - 1
       const isFirstItemWithoutHeader = i === 0 && disableHeader
@@ -298,6 +303,7 @@
   }
 
   function dragover (ev: MouseEvent, i: number): void {
+    if (!isListMutationEnabled(readonly)) return
     if (dragItemIndex === undefined || !lastLevel) return
     ev.preventDefault()
     ev.stopPropagation()
@@ -311,6 +317,7 @@
   }
 
   function dropItemHandle (ev: MouseEvent): void {
+    if (!isListMutationEnabled(readonly)) return
     ev.stopPropagation()
     ev.preventDefault()
     const update: DocumentUpdate<Doc> = {}
@@ -328,6 +335,7 @@
   }
 
   async function drop (update: DocumentUpdate<Doc> = {}): Promise<void> {
+    if (!isListMutationEnabled(readonly)) return
     if (dragItem.doc !== undefined) {
       const props = _newObjectProps(dragItem.doc)
       if (props !== undefined) {
@@ -350,6 +358,7 @@
   }
 
   const dragEndListener: any = (ev: DragEvent, initIndex: number) => {
+    if (!isListMutationEnabled(readonly)) return
     ev.preventDefault()
     const rect = listDiv.getBoundingClientRect()
     const inRect = ev.clientY > rect.top && ev.clientY < rect.top + rect.height
@@ -365,12 +374,14 @@
   }
 
   function dragStartHandler (e: CustomEvent<any>): void {
+    if (!isListMutationEnabled(readonly)) return
     const { target, index } = e.detail
     dragItemIndex = index
     ;(target as EventTarget).addEventListener('dragend', (e) => dragEndListener(e, index))
   }
 
   function dragStart (ev: DragEvent, docObject: Doc, i: number): void {
+    if (!isListMutationEnabled(readonly)) return
     if (ev.dataTransfer != null) {
       ev.dataTransfer.effectAllowed = 'move'
       ev.dataTransfer.dropEffect = 'move'
@@ -553,7 +564,9 @@
                 on:drop={dropItemHandle}
                 on:check={(ev) => dispatch('check', { docs: ev.detail.docs, value: ev.detail.value })}
                 on:contextmenu={async (event) => {
-                  await handleMenuOpened(event, docObject)
+                  if (isListMutationEnabled(readonly)) {
+                    await handleMenuOpened(event, docObject)
+                  }
                 }}
                 on:focus={() => {}}
                 on:mouseover={mouseAttractor(() => {
