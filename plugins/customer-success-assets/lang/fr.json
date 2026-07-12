@@ -20,6 +20,26 @@
     "InternalVisibility": "Interne",
     "RestrictedVisibility": "Restreint",
     "NoActivity": "Aucune activité du billet",
-    "TicketNotFound": "Billet indisponible"
+    "TicketNotFound": "Billet indisponible",
+    "QueueViews": "Vues de la file",
+    "AllTickets": "Tous",
+    "BotActiveQueue": "Robot actif",
+    "TakeoverRequestedQueue": "Prise en charge demandée",
+    "UnassignedQueue": "Non attribués",
+    "MineQueue": "Les miens",
+    "CustomerWaitingQueue": "Client en attente",
+    "SlaRiskQueue": "Risque ANS",
+    "HumanActiveQueue": "Agent actif",
+    "EscalatedQueue": "Transférés",
+    "ResolvedQueue": "Résolus",
+    "NoBotActiveTickets": "Aucun billet avec robot actif",
+    "NoTakeoverRequestedTickets": "Aucune demande de prise en charge",
+    "NoUnassignedTickets": "Aucun billet non attribué",
+    "NoMineTickets": "Aucun billet ne vous est attribué",
+    "NoCustomerWaitingTickets": "Aucun client en attente",
+    "NoSlaRiskTickets": "Aucun billet à risque pour l'ANS",
+    "NoHumanActiveTickets": "Aucun billet avec agent actif",
+    "NoEscalatedTickets": "Aucun billet transféré",
+    "NoResolvedTickets": "Aucun billet résolu"
   }
 }

@@ -20,6 +20,26 @@
     "InternalVisibility": "Internal",
     "RestrictedVisibility": "Restricted",
     "NoActivity": "No ticket activity",
-    "TicketNotFound": "Ticket unavailable"
+    "TicketNotFound": "Ticket unavailable",
+    "QueueViews": "Queue views",
+    "AllTickets": "All",
+    "BotActiveQueue": "Bot Active",
+    "TakeoverRequestedQueue": "Takeover Requested",
+    "UnassignedQueue": "Unassigned",
+    "MineQueue": "Mine",
+    "CustomerWaitingQueue": "Customer Waiting",
+    "SlaRiskQueue": "SLA Risk",
+    "HumanActiveQueue": "Human Active",
+    "EscalatedQueue": "Escalated",
+    "ResolvedQueue": "Resolved",
+    "NoBotActiveTickets": "No bot-active tickets",
+    "NoTakeoverRequestedTickets": "No takeover requests",
+    "NoUnassignedTickets": "No unassigned tickets",
+    "NoMineTickets": "No tickets assigned to you",
+    "NoCustomerWaitingTickets": "No customers waiting",
+    "NoSlaRiskTickets": "No tickets at SLA risk",
+    "NoHumanActiveTickets": "No human-active tickets",
+    "NoEscalatedTickets": "No escalated tickets",
+    "NoResolvedTickets": "No resolved tickets"
   }
 }

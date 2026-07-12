@@ -85,6 +85,11 @@ after the checker records `verified: PASS` with evidence in `RUN_STATUS.md`.
    - Add Bot Active, Takeover Requested, Unassigned, Mine, Customer Waiting,
      SLA Risk, Human Active, Escalated, and Resolved views.
    - Preserve filters, selection, and navigation state.
+   - Local checkpoint: all required queues use structured server-side Issue
+     predicates; queue/search/selection state is URL-backed, native Huly filters
+     retain their view-resources persistence, and empty states are queue-specific.
+   - Release evidence still required: authenticated desktop/mobile rendering and
+     a representative large-queue query/render trace.
 
 4. Takeover state chrome and live-session indicators
    - External key: `ndax:engineering:task:customer-success-ui:takeover-state-chrome`

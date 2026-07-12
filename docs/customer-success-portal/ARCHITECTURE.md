@@ -1,6 +1,6 @@
 # Customer Success Portal Architecture
 
-Status: CSSC-11 implemented with rendered certification pending; CSSC-12 projection detail tracer now reads three authorized projection lanes with pagination helpers, but deployment wiring and space provisioning remain incomplete
+Status: CSSC-11 implemented with rendered certification pending; CSSC-12 projection detail tracer reads three authorized projection lanes with pagination helpers; CSSC-13 queue views and persisted operator state are implemented locally, with authenticated rendering and deployment wiring still pending
 
 ## Decision
 
@@ -125,6 +125,32 @@ explicitly prohibited.
 English and French are the authored operator locales for this delivery. Other
 locale files intentionally carry English fallback text so package loading and
 locale shape remain valid until those translations are commissioned.
+
+## CSSC-13 Queue Boundary
+
+The Live Inbox keeps its read-only `ViewletContentView` and adds native Huly
+`FilterButton` and `FilterBar` controls. Queue selection and bounded text search
+are URL-backed so refresh, deep links, ticket selection, and back/forward
+navigation preserve operator context. Native filter state remains stored by the
+view-resources filter key.
+
+The first queue contract is deliberately limited to structured Tracker fields:
+
+- Bot Active, Takeover Requested, Customer Waiting, Human Active, and Escalated
+  use exact support workflow status ids.
+- Unassigned and Mine exclude Resolved and Closed tickets. Mine fails closed
+  when the current employee cannot be resolved.
+- Resolved includes both Resolved and Closed terminal states.
+- SLA Risk means a non-terminal ticket with a positive `dueDate` at or before
+  the current time. Due-soon windows, SLA tiers, and risk flags require a later
+  structured data contract; description text is never parsed into a queue
+  predicate.
+
+All queue predicates execute as server-side document queries. The companion
+count subscription requests at most one row and the viewlet retains native
+virtualized/list rendering behavior. Authenticated large-queue query-plan and
+render evidence remains a release gate because `Issue.dueDate` has no dedicated
+Customer Success index in this checkpoint.
 
 ## Registration Surface
 

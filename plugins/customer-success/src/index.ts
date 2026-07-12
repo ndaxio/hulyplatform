@@ -139,7 +139,27 @@ const customerSuccess = plugin(customerSuccessId, {
     InternalVisibility: '' as IntlString,
     RestrictedVisibility: '' as IntlString,
     NoActivity: '' as IntlString,
-    TicketNotFound: '' as IntlString
+    TicketNotFound: '' as IntlString,
+    QueueViews: '' as IntlString,
+    AllTickets: '' as IntlString,
+    BotActiveQueue: '' as IntlString,
+    TakeoverRequestedQueue: '' as IntlString,
+    UnassignedQueue: '' as IntlString,
+    MineQueue: '' as IntlString,
+    CustomerWaitingQueue: '' as IntlString,
+    SlaRiskQueue: '' as IntlString,
+    HumanActiveQueue: '' as IntlString,
+    EscalatedQueue: '' as IntlString,
+    ResolvedQueue: '' as IntlString,
+    NoBotActiveTickets: '' as IntlString,
+    NoTakeoverRequestedTickets: '' as IntlString,
+    NoUnassignedTickets: '' as IntlString,
+    NoMineTickets: '' as IntlString,
+    NoCustomerWaitingTickets: '' as IntlString,
+    NoSlaRiskTickets: '' as IntlString,
+    NoHumanActiveTickets: '' as IntlString,
+    NoEscalatedTickets: '' as IntlString,
+    NoResolvedTickets: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>
