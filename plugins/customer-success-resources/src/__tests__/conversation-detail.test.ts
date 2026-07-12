@@ -9,12 +9,15 @@ import type { Issue, Project } from '@hcengineering/tracker'
 
 import {
   buildConversationHistoryQuery,
+  buildConversationEventFindOptions,
   buildConversationIssueQuery,
   buildConversationTranscriptQuery,
   classifyConversationEntryLane,
   closeConversationQuery,
   compareConversationEntriesAscending,
+  compareConversationEventsAscending,
   sortConversationEntriesAscending,
+  sortConversationEventsAscending,
   openConversationQuery,
   LatestConversationRequest,
   validateIssueQueryIdentifier,
@@ -78,17 +81,12 @@ describe('conversation detail helpers', () => {
     expect(openConversationQuery(current, 'SUP-42<script>')).toBe(current)
   })
 
-  it('builds separate transcript and history lanes scoped by project and issue', () => {
+  it('queries only the materialized public projection for the transcript lane', () => {
     expect(buildConversationTranscriptQuery(projectId, issueId)).toEqual({
       space: projectId,
-      attachedTo: issueId,
-      attachedToClass: 'tracker:class:Issue',
-      collection: 'comments',
-      _class: 'chunter:class:ChatMessage',
-      createdBy: 'core:account:System',
-      'props.ndax_kind': {
-        $in: ['support_mirror_customer', 'support_mirror_bot', 'support_agent_joined']
-      }
+      issueId,
+      visibility: 'public',
+      schemaVersion: 1
     })
 
     expect(buildConversationHistoryQuery(projectId, issueId)).toEqual({
@@ -103,47 +101,44 @@ describe('conversation detail helpers', () => {
 
     expect(buildConversationTranscriptQuery(otherProjectId, otherIssueId)).toEqual({
       space: otherProjectId,
-      attachedTo: otherIssueId,
-      attachedToClass: 'tracker:class:Issue',
-      collection: 'comments',
-      _class: 'chunter:class:ChatMessage',
-      createdBy: 'core:account:System',
-      'props.ndax_kind': {
-        $in: ['support_mirror_customer', 'support_mirror_bot', 'support_agent_joined']
+      issueId: otherIssueId,
+      visibility: 'public',
+      schemaVersion: 1
+    })
+  })
+
+  it('bounds the projection subscription and orders it by the immutable cursor tuple', () => {
+    expect(buildConversationEventFindOptions()).toEqual({
+      limit: 100,
+      sort: {
+        occurredAt: -1,
+        eventId: -1
       }
     })
   })
 
   it.each([
-    [{ props: { ndax_kind: 'support_mirror_customer' } }, false, 'customer'],
-    [{ props: { ndax_kind: 'support_mirror_bot' } }, false, 'bot'],
-    [{ props: { ndax_kind: 'support_agent_joined' } }, false, 'system'],
-    [{ props: { ndax_kind: 'support_public_reply' } }, true, 'agent']
-  ] as const)('classifies exact allowlisted ndax kinds (%j)', (entry, publicAuthorVerified, expected) => {
-    expect(classifyConversationEntryLane(entry, publicAuthorVerified)).toBe(expected)
+    [{ lane: 'customer', visibility: 'public', schemaVersion: 1 }, 'customer'],
+    [{ lane: 'bot', visibility: 'public', schemaVersion: 1 }, 'bot'],
+    [{ lane: 'system', visibility: 'public', schemaVersion: 1 }, 'system'],
+    [{ lane: 'agent', visibility: 'public', schemaVersion: 1 }, 'agent']
+  ] as const)('classifies exact schema-v1 public projection lanes (%j)', (entry, expected) => {
+    expect(classifyConversationEntryLane(entry)).toBe(expected)
   })
 
   it.each([
-    [{ props: undefined }, false],
-    [{ props: null }, false],
-    [{ props: {} }, false],
-    [{ props: { ndax_kind: 'gate_review' } }, false],
-    [{ props: { ndax_kind: 'support_internal_note' } }, false],
-    [{ props: { ndax_kind: 'support_restricted_note' } }, false],
-    [{ props: { ndax_kind: 'support_public_reply' } }, false],
-    [{ props: { ndax_kind: 'support_public_reply' }, createdBy: 'support-agent' }, false],
-    [{ props: { ndax_kind: 'unknown_kind' } }, true],
-    [{ props: { ndax_kind: ['support_public_reply'] } }, true],
-    [
-      {
-        props: {},
-        createdBy: 'support-agent',
-        body: '<!-- ndax_support_public_reply -->\nVisible if body text is trusted'
-      },
-      true
-    ]
-  ])('fails closed for hidden, absent, and spoofed conversation kinds (%j)', (entry, publicAuthorVerified) => {
-    expect(classifyConversationEntryLane(entry as any, publicAuthorVerified)).toBeUndefined()
+    undefined,
+    null,
+    {},
+    { lane: 'customer', visibility: 'internal', schemaVersion: 1 },
+    { lane: 'agent', visibility: 'restricted', schemaVersion: 1 },
+    { lane: 'customer', visibility: 'public', schemaVersion: 0 },
+    { lane: 'customer', visibility: 'public', schemaVersion: 2 },
+    { lane: 'unknown', visibility: 'public', schemaVersion: 1 },
+    { lane: ['agent'], visibility: 'public', schemaVersion: 1 },
+    { lane: 'agent', visibility: 'PUBLIC', schemaVersion: 1 }
+  ])('fails closed for hidden, malformed, unknown, and unsupported projection events (%j)', (entry) => {
+    expect(classifyConversationEntryLane(entry as any)).toBeUndefined()
   })
 
   it('sorts entries by createdOn then modifiedOn then _id without mutating the input', () => {
@@ -195,24 +190,44 @@ describe('conversation detail helpers', () => {
     expect(entries.map((entry) => entry._id)).toEqual(['entry-c', 'entry-b', 'entry-a', 'entry-d'])
   })
 
-  it('returns only exact visible transcript kinds from mixed results', () => {
-    const makeEntry = (id: string, kind: string): ConversationEntryDoc => ({
+  it('sorts projection events by occurredAt then stable eventId without mutating the input', () => {
+    const events = [
+      { eventId: 'evt-c', occurredAt: 20 },
+      { eventId: 'evt-b', occurredAt: 10 },
+      { eventId: 'evt-a', occurredAt: 10 }
+    ]
+
+    const sorted = sortConversationEventsAscending(events)
+
+    expect(sorted.map((event) => event.eventId)).toEqual(['evt-a', 'evt-b', 'evt-c'])
+    expect(events.map((event) => event.eventId)).toEqual(['evt-c', 'evt-b', 'evt-a'])
+    expect(compareConversationEventsAscending(events[2], events[1])).toBeLessThan(0)
+  })
+
+  it('returns only exact schema-v1 public lanes from mixed projection results', () => {
+    const makeEntry = (
+      id: string,
+      lane: string,
+      visibility: string = 'public',
+      schemaVersion: number = 1
+    ): ConversationEntryDoc => ({
       _id: id as any,
-      _class: 'chunter:class:ChatMessage' as any,
+      _class: 'customer-success:class:ConversationEvent' as any,
       space: projectId,
-      attachedTo: issueId,
-      attachedToClass: 'tracker:class:Issue' as any,
-      collection: 'comments',
-      modifiedBy: 'core:account:System' as any,
+      issueId,
+      eventId: id,
+      occurredAt: Number(id.slice(-1)),
       createdOn: Number(id.slice(-1)),
       modifiedOn: Number(id.slice(-1)),
-      props: { ndax_kind: kind }
+      lane,
+      visibility,
+      schemaVersion
     })
     const visible = visibleConversationEntries([
-      makeEntry('entry-4', 'support_public_reply'),
-      makeEntry('entry-2', 'support_mirror_bot'),
-      makeEntry('entry-1', 'support_mirror_customer'),
-      makeEntry('entry-3', 'support_restricted_note')
+      makeEntry('entry-4', 'agent', 'restricted'),
+      makeEntry('entry-2', 'bot'),
+      makeEntry('entry-1', 'customer'),
+      makeEntry('entry-3', 'unknown')
     ])
 
     expect(visible.map(({ message, lane }) => [message._id, lane])).toEqual([

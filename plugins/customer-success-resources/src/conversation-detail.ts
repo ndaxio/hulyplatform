@@ -4,30 +4,29 @@
 // Licensed under the Eclipse Public License, Version 2.0.
 //
 
-import core, { type Class, type Doc, type DocumentQuery, type Ref, type Timestamp } from '@hcengineering/core'
+import { SortingOrder, type Class, type Doc, type DocumentQuery, type Ref, type Timestamp } from '@hcengineering/core'
+import type {
+  ConversationEvent,
+  ConversationEventLane,
+  ConversationEventVisibility
+} from '@hcengineering/customer-success'
 import tracker, { type Issue, type Project } from '@hcengineering/tracker'
 
 const ISSUE_QUERY_IDENTIFIER_RE = /^[A-Z][A-Z0-9]*-[0-9]+$/
-const ISSUE_COMMENT_CLASS = 'chunter:class:ChatMessage'
-export const trustedConversationKinds = [
-  'support_mirror_customer',
-  'support_mirror_bot',
-  'support_agent_joined'
-] as const
-
 export type ConversationEntryLane = 'customer' | 'bot' | 'system' | 'agent'
 export type ConversationLocationQuery = Record<string, string | null> | undefined
 
 export interface ConversationEntryDoc extends Doc {
-  attachedTo: Ref<Issue>
-  attachedToClass: Ref<Class<Issue>>
-  collection: string
+  issueId?: Ref<Issue>
+  lane?: ConversationEventLane | unknown
+  visibility?: ConversationEventVisibility | unknown
+  schemaVersion?: number | unknown
+  attachedTo?: Ref<Issue>
+  attachedToClass?: Ref<Class<Issue>>
+  collection?: string
   space: Ref<Project>
   createdOn?: Timestamp
   modifiedOn?: Timestamp
-  props?: {
-    ndax_kind?: unknown
-  } | null
 }
 
 export class LatestConversationRequest {
@@ -89,12 +88,22 @@ export function buildConversationTranscriptQuery (
 ): DocumentQuery<ConversationEntryDoc> {
   return {
     space: projectId,
-    attachedTo: issueId,
-    attachedToClass: tracker.class.Issue,
-    collection: 'comments',
-    _class: ISSUE_COMMENT_CLASS,
-    createdBy: core.account.System,
-    'props.ndax_kind': { $in: [...trustedConversationKinds] }
+    issueId,
+    visibility: 'public',
+    schemaVersion: 1
+  }
+}
+
+export function buildConversationEventFindOptions (): {
+  limit: number
+  sort: { occurredAt: SortingOrder, eventId: SortingOrder }
+} {
+  return {
+    limit: 100,
+    sort: {
+      occurredAt: SortingOrder.Descending,
+      eventId: SortingOrder.Descending
+    }
   }
 }
 
@@ -108,39 +117,52 @@ export function buildConversationHistoryQuery (
     attachedToClass: tracker.class.Issue,
     collection: { $ne: 'comments' },
     _class: {
-      $ne: ISSUE_COMMENT_CLASS
+      $ne: 'chunter:class:ChatMessage'
     }
   }
 }
 
 export function classifyConversationEntryLane (
-  entry: Pick<ConversationEntryDoc, 'props'> | null | undefined,
-  publicAuthorVerified = false
+  entry: Pick<ConversationEntryDoc, 'lane' | 'visibility' | 'schemaVersion'> | null | undefined
 ): ConversationEntryLane | undefined {
-  const kind = typeof entry?.props?.ndax_kind === 'string' ? entry.props.ndax_kind : undefined
+  if (entry?.visibility !== 'public' || entry.schemaVersion !== 1) return undefined
 
-  switch (kind) {
-    case 'support_mirror_customer':
+  switch (entry.lane) {
+    case 'customer':
       return 'customer'
-    case 'support_mirror_bot':
+    case 'bot':
       return 'bot'
-    case 'support_agent_joined':
+    case 'system':
       return 'system'
-    case 'support_public_reply':
-      return publicAuthorVerified ? 'agent' : undefined
+    case 'agent':
+      return 'agent'
     default:
       return undefined
   }
 }
 
-export function visibleConversationEntries<T extends ConversationEntryDoc> (
-  entries: T[],
-  publicAuthorVerified = false
-): Array<{ message: T, lane: ConversationEntryLane }> {
-  return sortConversationEntriesAscending(entries).flatMap((message) => {
-    const lane = classifyConversationEntryLane(message, publicAuthorVerified)
+export function visibleConversationEntries<
+  T extends ConversationEntryDoc & Pick<ConversationEvent, 'eventId' | 'occurredAt'>
+> (entries: T[]): Array<{ message: T, lane: ConversationEntryLane }> {
+  return sortConversationEventsAscending(entries).flatMap((message) => {
+    const lane = classifyConversationEntryLane(message)
     return lane === undefined ? [] : [{ message, lane }]
   })
+}
+
+export function compareConversationEventsAscending (
+  left: Pick<ConversationEvent, 'eventId' | 'occurredAt'>,
+  right: Pick<ConversationEvent, 'eventId' | 'occurredAt'>
+): number {
+  const occurredDiff = left.occurredAt - right.occurredAt
+  if (occurredDiff !== 0) return occurredDiff
+  return left.eventId.localeCompare(right.eventId)
+}
+
+export function sortConversationEventsAscending<T extends Pick<ConversationEvent, 'eventId' | 'occurredAt'>> (
+  entries: T[]
+): T[] {
+  return [...entries].sort(compareConversationEventsAscending)
 }
 
 function getCreatedSortValue (entry: Pick<ConversationEntryDoc, 'createdOn' | 'modifiedOn'>): number {

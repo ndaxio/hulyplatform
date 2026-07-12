@@ -4,19 +4,94 @@
 // Licensed under the Eclipse Public License, Version 2.0.
 //
 
-import { AccountRole, SortingOrder } from '@hcengineering/core'
-import customerSuccess, { customerSuccessId, customerSuccessLiveInboxId } from '@hcengineering/customer-success'
+import {
+  AccountRole,
+  IndexKind,
+  SortingOrder,
+  type AccountUuid,
+  type Domain,
+  type Markup,
+  type Ref,
+  type Timestamp
+} from '@hcengineering/core'
+import customerSuccess, {
+  type ConversationEvent,
+  type ConversationEventLane,
+  type ConversationEventSource,
+  type ConversationEventVisibility,
+  customerSuccessId,
+  customerSuccessLiveInboxId
+} from '@hcengineering/customer-success'
 import inbox from '@hcengineering/inbox'
-import { type Builder } from '@hcengineering/model'
+import {
+  type Builder,
+  Index,
+  Model,
+  Prop,
+  TypeAccountUuid,
+  TypeMarkup,
+  TypeNumber,
+  TypeRef,
+  TypeString,
+  TypeTimestamp
+} from '@hcengineering/model'
 import contact from '@hcengineering/model-contact'
-import core from '@hcengineering/model-core'
+import core, { TDoc } from '@hcengineering/model-core'
 import tracker from '@hcengineering/model-tracker'
 import view from '@hcengineering/model-view'
 import workbench from '@hcengineering/model-workbench'
+import { getEmbeddedLabel } from '@hcengineering/platform'
+import { type Issue } from '@hcengineering/tracker'
 import { type Viewlet } from '@hcengineering/view'
 
 export { customerSuccessId, customerSuccessLiveInboxId } from '@hcengineering/customer-success'
 export { customerSuccess as default }
+
+export const DOMAIN_CUSTOMER_SUCCESS = 'customer-success' as Domain
+
+@Model(customerSuccess.class.ConversationEvent, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)
+export class TConversationEvent extends TDoc implements ConversationEvent {
+  @Prop(TypeRef(tracker.class.Issue), getEmbeddedLabel('Issue id'))
+  @Index(IndexKind.Indexed)
+    issueId!: Ref<Issue>
+
+  @Prop(TypeString(), getEmbeddedLabel('Conversation id'))
+  @Index(IndexKind.Indexed)
+    conversationId!: string
+
+  @Prop(TypeString(), getEmbeddedLabel('Event id'))
+  @Index(IndexKind.Indexed)
+    eventId!: string
+
+  @Prop(TypeString(), getEmbeddedLabel('Lane'))
+    lane!: ConversationEventLane
+
+  @Prop(TypeString(), getEmbeddedLabel('Visibility'))
+    visibility!: ConversationEventVisibility
+
+  @Prop(TypeString(), getEmbeddedLabel('Source'))
+    source!: ConversationEventSource
+
+  @Prop(TypeString(), getEmbeddedLabel('Source message id'))
+    sourceMessageId?: string
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Occurred at'))
+  @Index(IndexKind.Indexed)
+    occurredAt!: Timestamp
+
+  @Prop(TypeMarkup(), getEmbeddedLabel('Message'))
+    message!: Markup
+
+  @Prop(TypeAccountUuid(), getEmbeddedLabel('Author account'))
+    authorAccount?: AccountUuid
+
+  @Prop(TypeString(), getEmbeddedLabel('Idempotency key'))
+  @Index(IndexKind.Indexed)
+    idempotencyKey!: string
+
+  @Prop(TypeNumber(), getEmbeddedLabel('Schema version'))
+    schemaVersion!: number
+}
 
 export const liveInboxViewletConfig: Viewlet['config'] = [
   {
@@ -62,6 +137,14 @@ export const liveInboxViewletConfig: Viewlet['config'] = [
 ]
 
 export function createModel (builder: Builder): void {
+  builder.createModel(TConversationEvent)
+
+  builder.mixin(customerSuccess.class.ConversationEvent, core.class.Class, core.mixin.TxAccessLevel, {
+    createAccessLevel: AccountRole.Admin,
+    updateAccessLevel: AccountRole.Admin,
+    removeAccessLevel: AccountRole.Admin
+  })
+
   builder.createDoc(
     workbench.class.Application,
     core.space.Model,

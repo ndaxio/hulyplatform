@@ -4,10 +4,10 @@
 // Licensed under the Eclipse Public License, Version 2.0.
 //
 
-import type { Doc, Ref } from '@hcengineering/core'
+import type { AccountUuid, Class, Doc, Markup, Ref, Timestamp } from '@hcengineering/core'
 import type { IntlString, Metadata, Plugin, Resource } from '@hcengineering/platform'
 import { plugin } from '@hcengineering/platform'
-import type { Project } from '@hcengineering/tracker'
+import type { Issue, Project } from '@hcengineering/tracker'
 import type { AnyComponent, Location, ResolvedLocation } from '@hcengineering/ui'
 import type { Viewlet } from '@hcengineering/view'
 
@@ -16,9 +16,36 @@ export const customerSuccessLiveInboxId = 'customer-success-live-inbox'
 
 export const defaultSupportProjectId = 'ndax:support:project:customer-success-inbox' as Ref<Project>
 
+export type ConversationEventLane = 'customer' | 'bot' | 'agent' | 'system'
+export type ConversationEventVisibility = 'public' | 'internal' | 'restricted'
+export type ConversationEventSource = 'chat-orchestrator' | 'huly-agent' | 'support-system'
+
+/**
+ * Immutable operator-facing projection of a support conversation event.
+ * Raw ChatMessage comments are not an authorization boundary and must not be
+ * used as the production transcript source.
+ */
+export interface ConversationEvent extends Doc {
+  issueId: Ref<Issue>
+  conversationId: string
+  eventId: string
+  lane: ConversationEventLane
+  visibility: ConversationEventVisibility
+  source: ConversationEventSource
+  sourceMessageId?: string
+  occurredAt: Timestamp
+  message: Markup
+  authorAccount?: AccountUuid
+  idempotencyKey: string
+  schemaVersion: number
+}
+
 const customerSuccess = plugin(customerSuccessId, {
   app: {
     CustomerSuccess: '' as Ref<Doc>
+  },
+  class: {
+    ConversationEvent: '' as Ref<Class<ConversationEvent>>
   },
   component: {
     LiveInbox: '' as AnyComponent,

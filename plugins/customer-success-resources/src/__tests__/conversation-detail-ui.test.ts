@@ -22,8 +22,11 @@ describe('conversation detail UI security contract', () => {
     expect(detailSource).not.toContain('showArchived: true')
   })
 
-  it('keeps unverifiable public and unknown comments fail-closed', () => {
-    expect(detailSource).toContain('visibleConversationEntries(result as SupportChatMessage[])')
+  it('subscribes to the materialized projection instead of raw chat comments', () => {
+    expect(detailSource).toContain('customerSuccess.class.ConversationEvent')
+    expect(detailSource).toContain('visibleConversationEntries(result as SupportConversationEvent[])')
+    expect(detailSource).toContain('buildConversationEventFindOptions()')
+    expect(detailSource).not.toContain('chunter.class.ChatMessage')
     expect(detailSource).not.toContain('ndax_support_public_reply')
     expect(detailSource).not.toContain('createdBy ===')
   })

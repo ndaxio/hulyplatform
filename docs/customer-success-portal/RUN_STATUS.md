@@ -2,13 +2,13 @@
 
 run_label: `cssc-native-huly-portal-ui-r1`
 
-iteration: 5 / 20
+iteration: 6 / 20
 
 last_input: Approved production-ready native Customer Success portal plan.
 
-last_action: Completed the CSSC-12 partial-checkpoint maker/checker loop. The detail tracer now applies fail-closed transcript filtering in the Huly query, provides separate transcript and activity lanes, preserves query-state navigation, and includes keyboard-accessible mobile tabs. The final UI/accessibility checker passed; the security completion gate remains intentionally open.
+last_action: Replaced the raw-comment transcript tracer with the first materialized ConversationEvent projection slice. The model registers an immutable event contract, the browser subscribes only to schema-v1 public projection documents, classification fails closed, canonical order is occurredAt plus eventId, and the subscription is bounded to 100 rows. The cross-repo writer and role-space contract is documented in PROJECTION-CONTRACT.md.
 
-verified: CSSC-11 STATIC PASS remains current. CSSC-12 maker tests pass: resources 61/61, model 6/6, locale 2/2, resource registration covered, stale-request race covered, query shape pinned, resource formatting passes, and the 391-project aggregate build passes. The final UI/accessibility checker passed. Authenticated desktop/mobile rendering and the authoritative transcript security contract remain pending.
+verified: CSSC-11 STATIC PASS remains current. CSSC-12 projection maker tests pass: resources 62/62, model 7/7, locale 2/2, query class/shape and component wiring pinned, unknown schema and lanes fail closed, immutable tuple ordering covered, newest-100 bound covered, package formatting passes, and the 391-project aggregate build passes. Fresh unit/mutation and UI/accessibility checkers PASS. Security approves an explicitly partial checkpoint only and blocks completion on the writer, role spaces, human mutation forbids, PII evidence, lanes, and cursors. Authenticated desktop/mobile rendering remains unavailable because the in-app browser could not attach a tab.
 
 next_human_decision: none - architecture correction is within the approved production-ready portal scope; merge and activation remain human gates.
 
@@ -24,6 +24,6 @@ task_keys: `CSSC-11`, `CSSC-12`, `CSSC-13`, `CSSC-14`, `CSSC-15`, `CSSC-16`, `CS
 
 active_milestone: read-only conversation detail and timeline tracer
 
-last_synced: `2026-07-11T23:35:21Z`
+last_synced: `2026-07-12T15:55:21Z`
 
-status: CSSC-11 is static-certified and awaiting authenticated desktop/mobile evidence. CSSC-12 has a local fail-closed partial tracer; it is not complete because public/internal/restricted lanes, authoritative provenance, stable backend event ordering, pagination, and rendered evidence remain open. No merge, deployment, or activation.
+status: CSSC-11 is static-certified and awaiting authenticated desktop/mobile evidence. CSSC-12 has a local materialized-projection tracer; it is not complete because the trusted adapter writer, dedicated role-restricted projection spaces and mutation forbids, internal/restricted subscriptions, opaque cursor pagination, live role-matrix proof, and rendered evidence remain open. No merge, deployment, or activation.

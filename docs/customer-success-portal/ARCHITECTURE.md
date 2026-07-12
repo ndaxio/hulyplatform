@@ -67,7 +67,7 @@ import actions, saved-filter writes, or view-preference writes. Search and manua
 refresh are query-only. This keeps the first live proof reversible while queue
 accuracy, configuration, access denial, and rendered ergonomics are certified.
 
-## CSSC-12 Partial Detail Boundary
+## CSSC-12 Projection Boundary
 
 The first detail tracer stays inside the standalone Customer Success route and
 uses `?issue=CSI-N` query state rather than Tracker's editable issue panel.
@@ -76,17 +76,19 @@ project, and `tracker.ids.NoParent` all match. Transcript and activity remain
 separate subscriptions; they are never merged into a synthetic timestamp
 timeline.
 
-The browser transcript query is intentionally narrower than the final product.
-It requests only exact `support_mirror_customer`, `support_mirror_bot`, and
-`support_agent_joined` comments authored by `core.account.System`. Restricted,
-internal, unknown, untyped, public, and archived comments are excluded in the
-Huly query before browser delivery. Client classification remains a secondary
-fail-closed guard, not the authorization boundary.
+The browser transcript no longer subscribes to raw `ChatMessage` comments. It
+queries only schema-v1 `ConversationEvent` projection documents in an authorized
+Huly projection space, bounded to the newest 100 rows and displayed by the
+immutable `occurredAt + eventId` tuple. Unknown schemas, lanes, and visibility
+values fail closed. Client classification remains defense in depth, not the
+authorization boundary.
 
-CSSC-12 cannot close until an authoritative server-side projection supplies
-public, internal, and role-gated restricted lanes with stable event ids,
-provenance, cursor/order semantics, and bounded pagination. UI concealment of a
-broader raw comment subscription is explicitly prohibited.
+The event model and first public-lane query are only a tracer. CSSC-12 cannot
+close until the trusted adapter writer, dedicated role-restricted projection
+spaces, class-scoped human mutation forbids, internal/restricted subscriptions,
+opaque cursor pagination, and live role-matrix evidence are complete. See
+`PROJECTION-CONTRACT.md`. UI concealment of a broader raw subscription is
+explicitly prohibited.
 
 English and French are the authored operator locales for this delivery. Other
 locale files intentionally carry English fallback text so package loading and

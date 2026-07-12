@@ -5,8 +5,7 @@
 -->
 <script lang="ts">
   import activity, { type ActivityMessage } from '@hcengineering/activity'
-  import chunter, { type ChatMessage } from '@hcengineering/chunter'
-  import customerSuccess from '@hcengineering/customer-success'
+  import customerSuccess, { type ConversationEvent } from '@hcengineering/customer-success'
   import { DateRangeMode, SortingOrder, type DocumentQuery, type Ref } from '@hcengineering/core'
   import type { IntlString } from '@hcengineering/platform'
   import inbox from '@hcengineering/inbox'
@@ -30,6 +29,7 @@
   import {
     buildConversationHistoryQuery,
     buildConversationIssueQuery,
+    buildConversationEventFindOptions,
     buildConversationTranscriptQuery,
     LatestConversationRequest,
     sortConversationEntriesAscending,
@@ -43,9 +43,9 @@
   export let onClose: () => void
 
   type DetailState = 'loading' | 'ready' | 'denied' | 'error'
-  type SupportChatMessage = ChatMessage & ConversationEntryDoc
+  type SupportConversationEvent = ConversationEvent & ConversationEntryDoc
   interface VisibleMessage {
-    message: SupportChatMessage
+    message: SupportConversationEvent
     lane: ConversationEntryLane
   }
 
@@ -110,14 +110,14 @@
     transcriptLoading = true
     const targetId = target._id
     transcriptQuery.query(
-      chunter.class.ChatMessage,
-      buildConversationTranscriptQuery(projectId, target._id) as DocumentQuery<ChatMessage>,
+      customerSuccess.class.ConversationEvent,
+      buildConversationTranscriptQuery(projectId, target._id) as DocumentQuery<ConversationEvent>,
       (result) => {
         if (issue?._id !== targetId) return
-        visibleMessages = visibleConversationEntries(result as SupportChatMessage[])
+        visibleMessages = visibleConversationEntries(result as SupportConversationEvent[])
         transcriptLoading = false
       },
-      { sort: { createdOn: SortingOrder.Ascending } }
+      buildConversationEventFindOptions()
     )
   }
 
@@ -151,7 +151,11 @@
 
   function selectMobileLane (lane: 'conversation' | 'activity', focus = false): void {
     mobileLane = lane
-    if (focus) setTimeout(() => { (lane === 'conversation' ? conversationTab : activityTab)?.focus() })
+    if (focus) {
+      setTimeout(() => {
+        ;(lane === 'conversation' ? conversationTab : activityTab)?.focus()
+      })
+    }
   }
 
   function handleMobileLaneKeydown (event: KeyboardEvent): void {
@@ -220,7 +224,9 @@
           aria-selected={mobileLane === 'conversation'}
           aria-controls="customer-success-conversation-panel"
           tabindex={mobileLane === 'conversation' ? 0 : -1}
-          on:click={() => { selectMobileLane('conversation') }}
+          on:click={() => {
+            selectMobileLane('conversation')
+          }}
           on:keydown={handleMobileLaneKeydown}><Label label={customerSuccess.string.Conversation} /></button
         >
         <button
@@ -231,7 +237,9 @@
           aria-selected={mobileLane === 'activity'}
           aria-controls="customer-success-activity-panel"
           tabindex={mobileLane === 'activity' ? 0 : -1}
-          on:click={() => { selectMobileLane('activity') }}
+          on:click={() => {
+            selectMobileLane('activity')
+          }}
           on:keydown={handleMobileLaneKeydown}><Label label={customerSuccess.string.Activity} /></button
         >
       </div>
@@ -263,7 +271,7 @@
                     <div class="message-meta">
                       <strong><Label label={laneLabel(entry.lane)} /></strong>
                       <DatePresenter
-                        value={entry.message.createdOn ?? entry.message.modifiedOn}
+                        value={entry.message.occurredAt}
                         mode={DateRangeMode.DATETIME}
                         kind="ghost"
                         size="small"

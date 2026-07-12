@@ -62,9 +62,39 @@ describe('Customer Success inbox viewlet', () => {
 })
 
 describe('Customer Success application model', () => {
+  it('registers the materialized conversation event as an admin-only mutation surface', () => {
+    const builder = {
+      createDoc: jest.fn(),
+      createModel: jest.fn(),
+      mixin: jest.fn()
+    }
+
+    createModel(builder as any)
+
+    expect(builder.createModel).toHaveBeenCalledWith(expect.any(Function))
+    expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationEvent')).toBe(true)
+    const modelSource = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8')
+    expect(modelSource).toContain("export const DOMAIN_CUSTOMER_SUCCESS = 'customer-success' as Domain")
+    expect(modelSource).toContain(
+      '@Model(customerSuccess.class.ConversationEvent, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)'
+    )
+    expect(builder.mixin).toHaveBeenCalledWith(
+      'customer-success:class:ConversationEvent',
+      'core:class:Class',
+      'core:mixin:TxAccessLevel',
+      {
+        createAccessLevel: AccountRole.Admin,
+        updateAccessLevel: AccountRole.Admin,
+        removeAccessLevel: AccountRole.Admin
+      }
+    )
+  })
+
   it('registers a standalone app with a single live inbox special and no mutation chrome', () => {
     const builder = {
-      createDoc: jest.fn()
+      createDoc: jest.fn(),
+      createModel: jest.fn(),
+      mixin: jest.fn()
     }
 
     createModel(builder as any)
@@ -220,7 +250,9 @@ describe('Customer Success application model', () => {
     const storageBranchIndex = workbenchSource.indexOf(
       'currentApplication?.disablePanels === true ? JSON.stringify(loc) : originalLoc'
     )
-    const storageBlockMatch = workbenchSource.match(/if \(app !== undefined\) \{[\s\S]*?\n    }\n    currentQuery = loc\.query/)
+    const storageBlockMatch = workbenchSource.match(
+      /if \(app !== undefined\) \{[\s\S]*?\n {4}}\n {4}currentQuery = loc\.query/
+    )
     const storageBlock = storageBlockMatch?.[0] ?? ''
 
     expect(originalLocIndex).toBeGreaterThan(-1)
@@ -230,10 +262,12 @@ describe('Customer Success application model', () => {
     expect(storageBlock).toContain(
       'const storedLocation = currentApplication?.disablePanels === true ? JSON.stringify(loc) : originalLoc'
     )
-    expect(storageBlock).toContain('localStorage.setItem(`${locationStorageKeyId}_${app}`, storedLocation)')
+    expect(storageBlock).toContain('localStorage.setItem(`$' + '{locationStorageKeyId}_$' + '{app}`, storedLocation)')
     expect(storageBlock).toContain('if (currentApplication?.disablePanels === true) {')
     expect(storageBlock).toContain('localStorage.setItem(locationStorageKeyId, storedLocation)')
     expect(storageBlock).toContain('if (loc.path[1] !== undefined) {')
-    expect(storageBlock).toContain('localStorage.setItem(`${locationStorageKeyId}_${loc.path[1]}`, storedLocation)')
+    expect(storageBlock).toContain(
+      'localStorage.setItem(`$' + '{locationStorageKeyId}_$' + '{loc.path[1]}`, storedLocation)'
+    )
   })
 })
