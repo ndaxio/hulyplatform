@@ -16,6 +16,7 @@ import {
 } from '@hcengineering/core'
 import customerSuccess, {
   type ConversationEvent,
+  type ConversationBinding,
   type ConversationEventLane,
   type ConversationEventSource,
   type ConversationEventVisibility,
@@ -41,7 +42,7 @@ import tracker from '@hcengineering/model-tracker'
 import view from '@hcengineering/model-view'
 import workbench from '@hcengineering/model-workbench'
 import { getEmbeddedLabel } from '@hcengineering/platform'
-import { type Issue } from '@hcengineering/tracker'
+import { type Issue, type Project } from '@hcengineering/tracker'
 import { type Viewlet } from '@hcengineering/view'
 
 export { customerSuccessId, customerSuccessLiveInboxId } from '@hcengineering/customer-success'
@@ -96,6 +97,27 @@ export class TConversationEvent extends TDoc implements ConversationEvent {
     schemaVersion!: number
 }
 
+@Model(customerSuccess.class.ConversationBinding, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)
+export class TConversationBinding extends TDoc implements ConversationBinding {
+  @Prop(TypeString(), getEmbeddedLabel('Conversation id'))
+  @Index(IndexKind.Indexed)
+    conversationId!: string
+
+  @Prop(TypeRef(tracker.class.Issue), getEmbeddedLabel('Issue id'))
+  @Index(IndexKind.Indexed)
+    issueId!: Ref<Issue>
+
+  @Prop(TypeRef(tracker.class.Project), getEmbeddedLabel('Project id'))
+  @Index(IndexKind.Indexed)
+    projectId!: Ref<Project>
+
+  @Prop(TypeString(), getEmbeddedLabel('Binding digest'))
+    bindingDigest!: string
+
+  @Prop(TypeNumber(), getEmbeddedLabel('Schema version'))
+    schemaVersion!: number
+}
+
 export const liveInboxViewletConfig: Viewlet['config'] = [
   {
     key: '',
@@ -140,9 +162,15 @@ export const liveInboxViewletConfig: Viewlet['config'] = [
 ]
 
 export function createModel (builder: Builder): void {
-  builder.createModel(TConversationEvent)
+  builder.createModel(TConversationEvent, TConversationBinding)
 
   builder.mixin(customerSuccess.class.ConversationEvent, core.class.Class, core.mixin.TxAccessLevel, {
+    createAccessLevel: AccountRole.Admin,
+    updateAccessLevel: AccountRole.Admin,
+    removeAccessLevel: AccountRole.Admin
+  })
+
+  builder.mixin(customerSuccess.class.ConversationBinding, core.class.Class, core.mixin.TxAccessLevel, {
     createAccessLevel: AccountRole.Admin,
     updateAccessLevel: AccountRole.Admin,
     removeAccessLevel: AccountRole.Admin

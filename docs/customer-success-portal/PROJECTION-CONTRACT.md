@@ -13,6 +13,19 @@ space authorization.
 The adapter is a system writer, not a browser API. Adapter credentials and raw
 comment payloads must never be delivered to the Huly client bundle.
 
+Exact conversation-to-ticket resolution uses an immutable
+`customer-success:class:ConversationBinding` document keyed by a SHA-256 digest
+of the full conversation id. A binding contains the exact conversation id,
+support issue reference, support project reference, binding digest, and schema
+version. Missing, ambiguous, cross-project, or conflicting bindings fail closed.
+New support tickets create bindings atomically. Legacy tickets must be backfilled
+only from an authoritative exact conversation-to-issue mapping; title and
+sanitized description-marker inference is forbidden. The projection writer
+remains disabled until the model is deployed and required legacy bindings exist.
+Existing binding and event documents are authoritative only when their Huly
+`space` exactly matches the configured project or projection space; matching ids
+or digests in another space are conflicts, not retries.
+
 ## Event Schema
 
 Each event is immutable after creation.

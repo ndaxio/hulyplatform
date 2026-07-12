@@ -71,8 +71,9 @@ describe('Customer Success application model', () => {
 
     createModel(builder as any)
 
-    expect(builder.createModel).toHaveBeenCalledWith(expect.any(Function))
+    expect(builder.createModel).toHaveBeenCalledWith(expect.any(Function), expect.any(Function))
     expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationEvent')).toBe(true)
+    expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationBinding')).toBe(true)
     const modelSource = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8')
     expect(modelSource).toContain("export const DOMAIN_CUSTOMER_SUCCESS = 'customer-success' as Domain")
     expect(modelSource).toContain(
@@ -81,8 +82,21 @@ describe('Customer Success application model', () => {
     expect(modelSource).toMatch(
       /@Prop\(TypeString\(\), getEmbeddedLabel\('Payload digest'\)\)[\s\S]*payloadDigest!: string/
     )
+    expect(modelSource).toContain(
+      '@Model(customerSuccess.class.ConversationBinding, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)'
+    )
     expect(builder.mixin).toHaveBeenCalledWith(
       'customer-success:class:ConversationEvent',
+      'core:class:Class',
+      'core:mixin:TxAccessLevel',
+      {
+        createAccessLevel: AccountRole.Admin,
+        updateAccessLevel: AccountRole.Admin,
+        removeAccessLevel: AccountRole.Admin
+      }
+    )
+    expect(builder.mixin).toHaveBeenCalledWith(
+      'customer-success:class:ConversationBinding',
       'core:class:Class',
       'core:mixin:TxAccessLevel',
       {

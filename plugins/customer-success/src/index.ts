@@ -41,12 +41,21 @@ export interface ConversationEvent extends Doc {
   schemaVersion: number
 }
 
+export interface ConversationBinding extends Doc {
+  conversationId: string
+  issueId: Ref<Issue>
+  projectId: Ref<Project>
+  bindingDigest: string
+  schemaVersion: number
+}
+
 const customerSuccess = plugin(customerSuccessId, {
   app: {
     CustomerSuccess: '' as Ref<Doc>
   },
   class: {
-    ConversationEvent: '' as Ref<Class<ConversationEvent>>
+    ConversationEvent: '' as Ref<Class<ConversationEvent>>,
+    ConversationBinding: '' as Ref<Class<ConversationBinding>>
   },
   component: {
     LiveInbox: '' as AnyComponent,
