@@ -32,6 +32,7 @@ Each event is immutable after creation.
 | `message` | Sanitized Huly markup. |
 | `authorAccount` | Optional Huly account id resolved by the trusted writer. |
 | `idempotencyKey` | Stable retry key; never based on request time. |
+| `payloadDigest` | SHA-256 digest of the canonical writer payload for conflict detection. |
 | `schemaVersion` | Exact supported projection schema; initially `1`. |
 
 Unknown schema versions, lanes, and visibility values fail closed.

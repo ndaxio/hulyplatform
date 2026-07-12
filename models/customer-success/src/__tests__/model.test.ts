@@ -78,6 +78,9 @@ describe('Customer Success application model', () => {
     expect(modelSource).toContain(
       '@Model(customerSuccess.class.ConversationEvent, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)'
     )
+    expect(modelSource).toMatch(
+      /@Prop\(TypeString\(\), getEmbeddedLabel\('Payload digest'\)\)[\s\S]*payloadDigest!: string/
+    )
     expect(builder.mixin).toHaveBeenCalledWith(
       'customer-success:class:ConversationEvent',
       'core:class:Class',

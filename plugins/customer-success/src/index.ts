@@ -37,6 +37,7 @@ export interface ConversationEvent extends Doc {
   message: Markup
   authorAccount?: AccountUuid
   idempotencyKey: string
+  payloadDigest: string
   schemaVersion: number
 }
 

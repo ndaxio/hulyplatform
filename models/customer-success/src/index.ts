@@ -89,6 +89,9 @@ export class TConversationEvent extends TDoc implements ConversationEvent {
   @Index(IndexKind.Indexed)
     idempotencyKey!: string
 
+  @Prop(TypeString(), getEmbeddedLabel('Payload digest'))
+    payloadDigest!: string
+
   @Prop(TypeNumber(), getEmbeddedLabel('Schema version'))
     schemaVersion!: number
 }
