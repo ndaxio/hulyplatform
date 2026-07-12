@@ -13,6 +13,11 @@ space authorization.
 The adapter is a system writer, not a browser API. Adapter credentials and raw
 comment payloads must never be delivered to the Huly client bundle.
 
+Adapter-confirmed takeover metadata is materialized separately as one mutable,
+system-written `customer-success:class:LiveSessionState` document per support
+issue in the internal projection space. It is never inferred from transcript
+text and never used to override the authoritative Tracker issue status.
+
 Exact conversation-to-ticket resolution uses an immutable
 `customer-success:class:ConversationBinding` document keyed by a SHA-256 digest
 of the full conversation id. A binding contains the exact conversation id,
@@ -50,6 +55,35 @@ Each event is immutable after creation.
 
 Unknown schema versions, lanes, and visibility values fail closed.
 
+## Live Session State Schema
+
+| Field | Contract |
+|---|---|
+| `_id` | Deterministic id derived from the Huly issue id. |
+| `space` | Exact internal projection space. |
+| `issueId` | Exact Huly support issue reference. |
+| `conversationId` | Optional exact conversation identity when a binding exists. |
+| `stage` | `bot_active`, `shadowing`, `takeover_requested`, `human_active`, or `other`. |
+| `claimOwner` | Current Huly Person assignee, or null. |
+| `pendingAcknowledgement` | True only for a requested but unacknowledged takeover. |
+| `acknowledged` | Adapter-confirmed acknowledgement state. |
+| `requestedAt` / `expiresAt` | Optional epoch-millisecond lock timestamps. |
+| `expired` | Adapter-computed lock expiry. |
+| `recoveryState` | `none`, `unassigned`, `unauthorized_assignee`, or `lock_expired`. |
+| `sourceStatus` | Huly issue status used to compute the projection. |
+| `observedAt` | Source observation time used for stale-state rejection. |
+| `schemaVersion` | Exact supported schema; initially `1`. |
+
+First materialization is an atomic not-exists create on the deterministic id.
+Concurrent first writers must converge on the same row; a losing writer reloads
+the created row and refreshes it instead of surfacing a duplicate-id failure.
+
+The browser accepts expiry and recovery metadata only when projection issue,
+source status, claim owner, and observation time reconcile with the current
+reactive Issue. Coarse stage always comes from `Issue.status`. Confirmed success
+requires both exact Human Active and a current adapter projection with
+`acknowledged: true`; otherwise the UI remains reconciliation pending.
+
 ## Authorization
 
 Projection documents are partitioned by three dedicated restricted typed Huly
@@ -77,15 +111,15 @@ broader result and then hides rows with CSS or client-side role checks.
 `TxAccessLevel` at `AccountRole.Admin` is defense in depth for the model tracer,
 not the final writer boundary. Before production activation, each projection
 space type must assign class-scoped forbid-create, forbid-update, and
-forbid-remove permissions for both `ConversationEvent` and
-`ConversationBinding`, plus projection-space update/remove and role-mixin
-update forbids, to every human role in the space type. Huly's restricted
+forbid-remove permissions for `ConversationEvent`, `ConversationBinding`, and
+`LiveSessionState`, plus projection-space update/remove and role-mixin update
+forbids, to every human role in the space type. Huly's restricted
 space middleware keeps a single bypass for `core.account.System`, which is the
 trusted writer path. A live mutation test must prove support agent, support
 lead, maintainer, owner, and ordinary admin sessions cannot forge or alter an
-event or binding.
+event, binding, or live-session state.
 
-This worktree defines the typed space model, the nine forbid permissions, the
+This worktree defines the typed space model, the twelve forbid permissions, the
 three role documents, and the client metadata hooks. It does not provision the
 three concrete space documents or their role-member assignments in this repo.
 
@@ -107,6 +141,8 @@ The trusted adapter writer must:
    restricted-note content.
 6. Never update or delete a projection event. Corrections are appended as new
    events linked by source metadata retained outside the browser contract.
+7. Upsert live-session state only after canonical support state is known. Failed
+   conditional claim/ack/release writes must not advance the projection.
 
 ## Ordering And Pagination
 
@@ -168,6 +204,8 @@ Completion requires all of the following:
   response for support-agent sessions and present only for authorized leads or
   compliance sessions.
 - Retry tests prove one source event creates exactly one projection document.
+- Live-session tests prove deterministic upsert identity, pending versus
+  confirmed state, expiry/recovery projection, and no write after failed CAS.
 - Log capture proves message bodies and regulated identifiers are absent from
   adapter, transactor, and browser console logs.
 - Authenticated desktop and mobile portal traces pass before merge or activation.

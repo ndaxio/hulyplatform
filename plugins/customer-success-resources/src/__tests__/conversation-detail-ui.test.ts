@@ -11,6 +11,7 @@ const componentDir = join(__dirname, '..', 'components')
 const detailSource = readFileSync(join(componentDir, 'ConversationDetail.svelte'), 'utf8')
 const presenterSource = readFileSync(join(componentDir, 'TicketPresenter.svelte'), 'utf8')
 const inboxSource = readFileSync(join(componentDir, 'LiveInbox.svelte'), 'utf8')
+const takeoverSource = readFileSync(join(componentDir, 'TakeoverStateChrome.svelte'), 'utf8')
 
 describe('conversation detail UI security contract', () => {
   it('uses project-scoped read-only queries and separates transcript from activity', () => {
@@ -34,6 +35,25 @@ describe('conversation detail UI security contract', () => {
     expect(detailSource).not.toContain('chunter.class.ChatMessage')
     expect(detailSource).not.toContain('ndax_support_public_reply')
     expect(detailSource).not.toContain('createdBy ===')
+  })
+
+  it('reactively subscribes to issue truth and the issue-bound internal live-session projection', () => {
+    expect(detailSource).toContain('issueQuery.query(')
+    expect(detailSource).toContain('customerSuccess.class.LiveSessionState')
+    expect(detailSource).toContain('buildLiveSessionStateQuery(projectionSpaceIds.internal, targetId)')
+    expect(detailSource).toContain("state === 'ready' && issue !== undefined")
+    expect(detailSource).toContain('<TakeoverStateChrome {issue} projection={liveSessionState} />')
+    expect(detailSource).not.toContain('client.findOne(tracker.class.Issue')
+  })
+
+  it('keeps takeover chrome read-only and confirms success only through reconciled issue status', () => {
+    expect(takeoverSource).toContain('resolveTakeoverChromeState(issue, projection)')
+    expect(takeoverSource).toContain('chrome.pendingAcknowledgement')
+    expect(takeoverSource).toContain('chrome.confirmed')
+    expect(takeoverSource).toContain('chrome.expired')
+    expect(takeoverSource).toContain('customerSuccess.string.LockExpired')
+    expect(takeoverSource).not.toContain('on:click')
+    expect(takeoverSource).not.toContain('acknowledgeSupportTicketTakeover')
   })
 
   it('labels non-public events and never hides authorization behind CSS-only filtering', () => {
@@ -67,6 +87,7 @@ describe('conversation detail UI security contract', () => {
   it('uses keyboard-operable mobile tabs without hiding a lane behind click-only TabList', () => {
     expect(detailSource).not.toContain('<TabList')
     expect(detailSource).toContain('role="tablist"')
+    expect(detailSource).toContain('aria-labelledby="customer-success-detail-views"')
     expect(detailSource).toContain('role="tab"')
     expect(detailSource).toContain("event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'")
     expect(detailSource).toContain("role={$deviceInfo.isMobile ? 'tabpanel' : undefined}")

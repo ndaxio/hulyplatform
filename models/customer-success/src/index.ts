@@ -25,6 +25,9 @@ import customerSuccess, {
   type ConversationEventVisibility,
   type ConversationProjectionSpace,
   type ConversationProjectionSpaceTypeData,
+  type LiveSessionRecoveryState,
+  type LiveSessionStage,
+  type LiveSessionState,
   customerSuccessId,
   customerSuccessLiveInboxId
 } from '@hcengineering/customer-success'
@@ -37,6 +40,7 @@ import {
   Model,
   Prop,
   TypeAccountUuid,
+  TypeBoolean,
   TypeMarkup,
   TypeNumber,
   TypeRef,
@@ -49,7 +53,8 @@ import tracker from '@hcengineering/model-tracker'
 import view from '@hcengineering/model-view'
 import workbench from '@hcengineering/model-workbench'
 import { getEmbeddedLabel } from '@hcengineering/platform'
-import { type Issue, type Project } from '@hcengineering/tracker'
+import { type Person } from '@hcengineering/contact'
+import { type Issue, type IssueStatus, type Project } from '@hcengineering/tracker'
 import { type Viewlet } from '@hcengineering/view'
 
 export { customerSuccessId, customerSuccessLiveInboxId } from '@hcengineering/customer-success'
@@ -125,6 +130,51 @@ export class TConversationBinding extends TDoc implements ConversationBinding {
     schemaVersion!: number
 }
 
+@Model(customerSuccess.class.LiveSessionState, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)
+export class TLiveSessionState extends TDoc implements LiveSessionState {
+  @Prop(TypeRef(tracker.class.Issue), getEmbeddedLabel('Issue id'))
+  @Index(IndexKind.Indexed)
+    issueId!: Ref<Issue>
+
+  @Prop(TypeString(), getEmbeddedLabel('Conversation id'))
+  @Index(IndexKind.Indexed)
+    conversationId?: string
+
+  @Prop(TypeString(), getEmbeddedLabel('Live session stage'))
+    stage!: LiveSessionStage
+
+  @Prop(TypeRef(contact.class.Person), getEmbeddedLabel('Claim owner'))
+    claimOwner!: Ref<Person> | null
+
+  @Prop(TypeBoolean(), getEmbeddedLabel('Pending acknowledgement'))
+    pendingAcknowledgement!: boolean
+
+  @Prop(TypeBoolean(), getEmbeddedLabel('Acknowledged'))
+    acknowledged!: boolean
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Requested at'))
+    requestedAt?: Timestamp
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Expires at'))
+    expiresAt?: Timestamp
+
+  @Prop(TypeBoolean(), getEmbeddedLabel('Expired'))
+    expired!: boolean
+
+  @Prop(TypeString(), getEmbeddedLabel('Recovery state'))
+    recoveryState!: LiveSessionRecoveryState
+
+  @Prop(TypeRef(tracker.class.IssueStatus), getEmbeddedLabel('Source status'))
+    sourceStatus!: Ref<IssueStatus>
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Observed at'))
+  @Index(IndexKind.Indexed)
+    observedAt!: Timestamp
+
+  @Prop(TypeNumber(), getEmbeddedLabel('Schema version'))
+    schemaVersion!: number
+}
+
 @Model(customerSuccess.class.ConversationProjectionSpace, core.class.TypedSpace, DOMAIN_CUSTOMER_SUCCESS)
 export class TConversationProjectionSpace extends TTypedSpace implements ConversationProjectionSpace {}
 
@@ -142,6 +192,9 @@ const projectionForbidPermissions: Ref<Permission>[] = [
   customerSuccess.permission.ForbidCreateConversationBinding,
   customerSuccess.permission.ForbidUpdateConversationBinding,
   customerSuccess.permission.ForbidRemoveConversationBinding,
+  customerSuccess.permission.ForbidCreateLiveSessionState,
+  customerSuccess.permission.ForbidUpdateLiveSessionState,
+  customerSuccess.permission.ForbidRemoveLiveSessionState,
   customerSuccess.permission.ForbidUpdateProjectionSpace,
   customerSuccess.permission.ForbidRemoveProjectionSpace,
   customerSuccess.permission.ForbidUpdateProjectionRoles
@@ -197,6 +250,24 @@ function defineProjectionSecurity (builder: Builder): void {
       core.class.TxRemoveDoc,
       customerSuccess.class.ConversationBinding,
       'Remove conversation binding'
+    ],
+    [
+      customerSuccess.permission.ForbidCreateLiveSessionState,
+      core.class.TxCreateDoc,
+      customerSuccess.class.LiveSessionState,
+      'Create live session state'
+    ],
+    [
+      customerSuccess.permission.ForbidUpdateLiveSessionState,
+      core.class.TxUpdateDoc,
+      customerSuccess.class.LiveSessionState,
+      'Update live session state'
+    ],
+    [
+      customerSuccess.permission.ForbidRemoveLiveSessionState,
+      core.class.TxRemoveDoc,
+      customerSuccess.class.LiveSessionState,
+      'Remove live session state'
     ],
     [
       customerSuccess.permission.ForbidUpdateProjectionSpace,
@@ -322,6 +393,7 @@ export function createModel (builder: Builder): void {
   builder.createModel(
     TConversationEvent,
     TConversationBinding,
+    TLiveSessionState,
     TConversationProjectionSpace,
     TConversationProjectionSpaceTypeData
   )
@@ -335,6 +407,12 @@ export function createModel (builder: Builder): void {
   })
 
   builder.mixin(customerSuccess.class.ConversationBinding, core.class.Class, core.mixin.TxAccessLevel, {
+    createAccessLevel: AccountRole.Admin,
+    updateAccessLevel: AccountRole.Admin,
+    removeAccessLevel: AccountRole.Admin
+  })
+
+  builder.mixin(customerSuccess.class.LiveSessionState, core.class.Class, core.mixin.TxAccessLevel, {
     createAccessLevel: AccountRole.Admin,
     updateAccessLevel: AccountRole.Admin,
     removeAccessLevel: AccountRole.Admin

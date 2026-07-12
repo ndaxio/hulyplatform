@@ -75,10 +75,12 @@ describe('Customer Success application model', () => {
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
+      expect.any(Function),
       expect.any(Function)
     )
     expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationEvent')).toBe(true)
     expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationBinding')).toBe(true)
+    expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TLiveSessionState')).toBe(true)
     expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationProjectionSpace')).toBe(
       true
     )
@@ -96,6 +98,12 @@ describe('Customer Success application model', () => {
     expect(modelSource).toContain(
       '@Model(customerSuccess.class.ConversationBinding, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)'
     )
+    expect(modelSource).toContain(
+      '@Model(customerSuccess.class.LiveSessionState, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)'
+    )
+    expect(modelSource).toMatch(/class TConversationEvent[\s\S]*?conversationId!: string/)
+    expect(modelSource).toMatch(/class TConversationBinding[\s\S]*?conversationId!: string/)
+    expect(modelSource).toMatch(/class TLiveSessionState[\s\S]*?conversationId\?: string/)
     expect(builder.mixin).toHaveBeenCalledWith(
       'customer-success:class:ConversationEvent',
       'core:class:Class',
@@ -116,9 +124,19 @@ describe('Customer Success application model', () => {
         removeAccessLevel: AccountRole.Admin
       }
     )
+    expect(builder.mixin).toHaveBeenCalledWith(
+      'customer-success:class:LiveSessionState',
+      'core:class:Class',
+      'core:mixin:TxAccessLevel',
+      {
+        createAccessLevel: AccountRole.Admin,
+        updateAccessLevel: AccountRole.Admin,
+        removeAccessLevel: AccountRole.Admin
+      }
+    )
 
     const permissionCalls = builder.createDoc.mock.calls.filter(([docClass]) => docClass === 'core:class:Permission')
-    expect(permissionCalls).toHaveLength(9)
+    expect(permissionCalls).toHaveLength(12)
     expect(permissionCalls.every(([, , permission]) => permission.forbid === true)).toBe(true)
     expect(permissionCalls.every(([, , permission]) => permission.scope === 'space')).toBe(true)
     expect(new Set(permissionCalls.map(([, , permission]) => permission.txClass))).toEqual(
@@ -128,6 +146,7 @@ describe('Customer Success application model', () => {
       new Set([
         'customer-success:class:ConversationEvent',
         'customer-success:class:ConversationBinding',
+        'customer-success:class:LiveSessionState',
         'customer-success:class:ConversationProjectionSpace',
         'customer-success:mixin:ConversationProjectionSpaceTypeData'
       ])
@@ -162,7 +181,7 @@ describe('Customer Success application model', () => {
         docClass === 'core:class:Role' && role.attachedTo === 'customer-success:spaceType:ConversationProjection'
     )
     expect(roleCalls).toHaveLength(3)
-    expect(roleCalls.every(([, , role]) => role.permissions.length === 9)).toBe(true)
+    expect(roleCalls.every(([, , role]) => role.permissions.length === 12)).toBe(true)
   })
 
   it('pins the system-only bypass in native restricted-space enforcement', () => {

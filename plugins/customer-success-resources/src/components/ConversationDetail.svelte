@@ -7,7 +7,8 @@
   import activity, { type ActivityMessage } from '@hcengineering/activity'
   import customerSuccess, {
     type ConversationEvent,
-    type ConversationProjectionSpace
+    type ConversationProjectionSpace,
+    type LiveSessionState
   } from '@hcengineering/customer-success'
   import { DateRangeMode, SortingOrder, type DocumentQuery, type Ref } from '@hcengineering/core'
   import type { IntlString } from '@hcengineering/platform'
@@ -45,6 +46,8 @@
     type ConversationEntryLane,
     type ConversationVisibilityLane
   } from '../conversation-detail'
+  import { buildLiveSessionStateQuery } from '../takeover-state'
+  import TakeoverStateChrome from './TakeoverStateChrome.svelte'
 
   export let issueIdentifier: string
   export let projectId: Ref<Project>
@@ -65,13 +68,17 @@
     internal: createQuery(),
     restricted: createQuery()
   }
+  const issueQuery = createQuery()
+  const statusQuery = createQuery()
+  const liveSessionQuery = createQuery()
   const historyQuery = createQuery()
-  const issueRequest = new LatestConversationRequest()
   const paginationRequest = new LatestConversationRequest()
 
   let state: DetailState = 'loading'
   let issue: Issue | undefined
   let issueStatus: IssueStatus | undefined
+  let liveSessionState: LiveSessionState | undefined
+  let subscribedIssueId: Ref<Issue> | undefined
   let visibleMessages: VisibleMessage[] = []
   let headMessages: Record<ConversationVisibilityLane, SupportConversationEvent[]> = {
     public: [],
@@ -112,40 +119,68 @@
     canLoadEarlier = { public: false, internal: false, restricted: false }
     earlierLoading = false
     history = []
+    subscribedIssueId = undefined
   }
 
-  async function loadIssue (identifier: string, supportProjectId: Ref<Project>): Promise<void> {
+  function watchIssue (identifier: string, supportProjectId: Ref<Project>): void {
     const query = buildConversationIssueQuery(supportProjectId, identifier)
     stopLaneQueries()
     issue = undefined
     issueStatus = undefined
+    liveSessionState = undefined
 
     if (query === undefined) {
-      issueRequest.invalidate()
+      issueQuery.unsubscribe()
       state = 'denied'
       return
     }
 
     state = 'loading'
-    try {
-      const result = await issueRequest.run(async () => {
-        const loaded = await client.findOne(tracker.class.Issue, query)
-        if (loaded === undefined) return { state: 'denied' as const }
-        let status: IssueStatus | undefined
-        try {
-          status = await client.findOne(tracker.class.IssueStatus, { _id: loaded.status })
-        } catch {
-          status = undefined
+    issueQuery.query(
+      tracker.class.Issue,
+      query,
+      (result) => {
+        const loaded = result[0]
+        if (loaded === undefined) {
+          issue = undefined
+          issueStatus = undefined
+          liveSessionState = undefined
+          state = 'denied'
+          return
         }
-        return { state: 'ready' as const, issue: loaded, status }
-      })
-      if (result === undefined) return
-      state = result.state
-      issue = result.state === 'ready' ? result.issue : undefined
-      issueStatus = result.state === 'ready' ? result.status : undefined
-    } catch {
-      state = 'error'
-    }
+        issue = loaded
+        state = 'ready'
+      },
+      { limit: 1 }
+    )
+  }
+
+  function watchIssueStatus (target: Issue): void {
+    const targetId = target._id
+    const targetStatus = target.status
+    if (issueStatus?._id !== targetStatus) issueStatus = undefined
+    statusQuery.query(
+      tracker.class.IssueStatus,
+      { _id: targetStatus },
+      (result) => {
+        if (issue?._id !== targetId || issue.status !== targetStatus) return
+        issueStatus = result[0]
+      },
+      { limit: 1 }
+    )
+  }
+
+  function watchLiveSessionState (target: Issue): void {
+    const targetId = target._id
+    liveSessionQuery.query(
+      customerSuccess.class.LiveSessionState,
+      buildLiveSessionStateQuery(projectionSpaceIds.internal, targetId),
+      (result) => {
+        if (issue?._id !== targetId) return
+        liveSessionState = result[0]
+      },
+      { limit: 1, sort: { observedAt: SortingOrder.Descending } }
+    )
   }
 
   function watchTranscript (target: Issue): void {
@@ -290,10 +325,23 @@
     selectMobileLane(mobileLane === 'conversation' ? 'activity' : 'conversation', true)
   }
 
-  $: void loadIssue(issueIdentifier, projectId)
+  function refreshDetail (): void {
+    issueQuery.refreshClient()
+    statusQuery.refreshClient()
+    liveSessionQuery.refreshClient()
+    historyQuery.refreshClient()
+    for (const query of Object.values(transcriptQueries)) query.refreshClient()
+  }
+
+  $: watchIssue(issueIdentifier, projectId)
   $: if (state === 'ready' && issue !== undefined) {
-    watchTranscript(issue)
-    watchHistory(issue)
+    watchIssueStatus(issue)
+    watchLiveSessionState(issue)
+    if (subscribedIssueId !== issue._id) {
+      subscribedIssueId = issue._id
+      watchTranscript(issue)
+      watchHistory(issue)
+    }
   }
 </script>
 
@@ -316,7 +364,7 @@
           size="small"
           kind="ghost"
           label={customerSuccess.string.Refresh}
-          on:click={() => loadIssue(issueIdentifier, projectId)}
+          on:click={refreshDetail}
         />
       </svelte:fragment>
     {/if}
@@ -340,8 +388,13 @@
       </div>
     </div>
 
+    <TakeoverStateChrome {issue} projection={liveSessionState} />
+
     {#if $deviceInfo.isMobile}
-      <div class="mobile-tabs" role="tablist">
+      <span id="customer-success-detail-views" class="sr-only">
+        <Label label={customerSuccess.string.ConversationViews} />
+      </span>
+      <div class="mobile-tabs" role="tablist" aria-labelledby="customer-success-detail-views">
         <button
           bind:this={conversationTab}
           id="customer-success-conversation-tab"

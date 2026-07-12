@@ -1,6 +1,6 @@
 # Customer Success Portal Architecture
 
-Status: CSSC-11 implemented with rendered certification pending; CSSC-12 projection detail tracer reads three authorized projection lanes with pagination helpers; CSSC-13 queue views and persisted operator state are implemented locally, with authenticated rendering and deployment wiring still pending
+Status: CSSC-11 implemented with rendered certification pending; CSSC-12 projection detail tracer reads three authorized projection lanes with pagination helpers; CSSC-13 queue views and persisted operator state are implemented locally; CSSC-14 takeover-state chrome and secured live-session projection are locally certified, with authenticated rendering and deployment wiring still pending
 
 ## Decision
 
@@ -151,6 +151,28 @@ count subscription requests at most one row and the viewlet retains native
 virtualized/list rendering behavior. Authenticated large-queue query-plan and
 render evidence remains a release gate because `Issue.dueDate` has no dedicated
 Customer Success index in this checkpoint.
+
+## CSSC-14 Live Session Boundary
+
+The conversation workspace subscribes reactively to the support Issue and to
+one schema-v1 `LiveSessionState` document in the internal projection space.
+Issue status and assignee remain authoritative for the four visible ownership
+states and claim owner. Adapter-computed expiry and recovery metadata is shown
+only when issue id, source status, claim owner, and observation time reconcile;
+otherwise it is withheld.
+
+Takeover Requested is always presented as pending backend acknowledgement.
+Only exact Human Active with a current adapter acknowledgement may render
+takeover confirmed; unmatched Human Active displays reconciliation pending. The
+chrome is read-only; claim, acknowledgement, release, assignment, and status mutations
+remain CSSC-15 scope. The adapter requires internal projection readiness before
+successful support transitions and materializes state only after successful
+conditional writes.
+
+The portal addresses the live-session row by its collision-free deterministic
+id as well as exact internal space, issue id, and schema. The adapter verifies
+the deployed model class and internal space before support mutation and derives
+conversation identity only from the exact immutable binding.
 
 ## Registration Surface
 

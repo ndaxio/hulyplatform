@@ -95,6 +95,12 @@ after the checker records `verified: PASS` with evidence in `RUN_STATUS.md`.
    - External key: `ndax:engineering:task:customer-success-ui:takeover-state-chrome`
    - Clearly distinguish Bot Active, Shadowing, Takeover Requested, and Human
      Active, including pending, expiry, and reconciliation states.
+   - Local checkpoint: reactive Issue truth plus an issue-bound internal
+     LiveSessionState projection; stale computed fields fail closed and only
+     exact Human Active plus current adapter acknowledgement can display
+     confirmation.
+   - Release evidence still required: deployed model/adapter projection, live
+     transition trace, two-agent contention, and authenticated rendering.
 
 ### Operator Actions
 

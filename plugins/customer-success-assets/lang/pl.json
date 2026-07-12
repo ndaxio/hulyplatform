@@ -40,6 +40,18 @@
     "NoSlaRiskTickets": "No tickets at SLA risk",
     "NoHumanActiveTickets": "No human-active tickets",
     "NoEscalatedTickets": "No escalated tickets",
-    "NoResolvedTickets": "No resolved tickets"
+    "NoResolvedTickets": "No resolved tickets",
+    "ShadowingState": "Shadowing",
+    "Assignee": "Assignee",
+    "ClaimOwner": "Claim owner",
+    "PendingAcknowledgement": "Agent connection pending",
+    "TakeoverConfirmed": "Takeover confirmed",
+    "AcknowledgementExpiry": "Acknowledgement expires",
+    "RecoveryState": "Recovery state",
+    "NeedsAssignment": "Needs assignment",
+    "UnauthorizedAssignee": "Unauthorized assignee",
+    "LockExpired": "Takeover lock expired",
+    "ReconciliationPending": "Reconciliation pending",
+    "ConversationViews": "Conversation views"
   }
 }

@@ -40,6 +40,18 @@
     "NoSlaRiskTickets": "Aucun billet à risque pour l'ANS",
     "NoHumanActiveTickets": "Aucun billet avec agent actif",
     "NoEscalatedTickets": "Aucun billet transféré",
-    "NoResolvedTickets": "Aucun billet résolu"
+    "NoResolvedTickets": "Aucun billet résolu",
+    "ShadowingState": "Observation",
+    "Assignee": "Responsable",
+    "ClaimOwner": "Responsable de la prise en charge",
+    "PendingAcknowledgement": "Connexion de l'agent en attente",
+    "TakeoverConfirmed": "Prise en charge confirmée",
+    "AcknowledgementExpiry": "Expiration de l'accusé de réception",
+    "RecoveryState": "État de récupération",
+    "NeedsAssignment": "Attribution requise",
+    "UnauthorizedAssignee": "Responsable non autorisé",
+    "LockExpired": "Verrou de prise en charge expiré",
+    "ReconciliationPending": "Rapprochement en attente",
+    "ConversationViews": "Vues de la conversation"
   }
 }

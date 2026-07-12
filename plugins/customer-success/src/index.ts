@@ -19,9 +19,10 @@ import type {
   Timestamp,
   TypedSpace
 } from '@hcengineering/core'
+import type { Person } from '@hcengineering/contact'
 import type { IntlString, Metadata, Plugin, Resource } from '@hcengineering/platform'
 import { plugin } from '@hcengineering/platform'
-import type { Issue, Project } from '@hcengineering/tracker'
+import type { Issue, IssueStatus, Project } from '@hcengineering/tracker'
 import type { AnyComponent, Location, ResolvedLocation } from '@hcengineering/ui'
 import type { Viewlet } from '@hcengineering/view'
 
@@ -67,6 +68,26 @@ export interface ConversationBinding extends Doc {
   schemaVersion: number
 }
 
+export type LiveSessionStage = 'bot_active' | 'shadowing' | 'takeover_requested' | 'human_active' | 'other'
+export type LiveSessionRecoveryState = 'none' | 'unassigned' | 'unauthorized_assignee' | 'lock_expired'
+
+/** System-written projection of adapter-confirmed live takeover state. */
+export interface LiveSessionState extends Doc {
+  issueId: Ref<Issue>
+  conversationId?: string
+  stage: LiveSessionStage
+  claimOwner: Ref<Person> | null
+  pendingAcknowledgement: boolean
+  acknowledged: boolean
+  requestedAt?: Timestamp
+  expiresAt?: Timestamp
+  expired: boolean
+  recoveryState: LiveSessionRecoveryState
+  sourceStatus: Ref<IssueStatus>
+  observedAt: Timestamp
+  schemaVersion: number
+}
+
 export interface ConversationProjectionSpace extends TypedSpace {}
 
 export interface ConversationProjectionSpaceTypeData extends ConversationProjectionSpace, RolesAssignment {}
@@ -78,6 +99,7 @@ const customerSuccess = plugin(customerSuccessId, {
   class: {
     ConversationEvent: '' as Ref<Class<ConversationEvent>>,
     ConversationBinding: '' as Ref<Class<ConversationBinding>>,
+    LiveSessionState: '' as Ref<Class<LiveSessionState>>,
     ConversationProjectionSpace: '' as Ref<Class<ConversationProjectionSpace>>
   },
   mixin: {
@@ -101,6 +123,9 @@ const customerSuccess = plugin(customerSuccessId, {
     ForbidCreateConversationBinding: '' as Ref<Permission>,
     ForbidUpdateConversationBinding: '' as Ref<Permission>,
     ForbidRemoveConversationBinding: '' as Ref<Permission>,
+    ForbidCreateLiveSessionState: '' as Ref<Permission>,
+    ForbidUpdateLiveSessionState: '' as Ref<Permission>,
+    ForbidRemoveLiveSessionState: '' as Ref<Permission>,
     ForbidUpdateProjectionSpace: '' as Ref<Permission>,
     ForbidRemoveProjectionSpace: '' as Ref<Permission>,
     ForbidUpdateProjectionRoles: '' as Ref<Permission>
@@ -159,7 +184,19 @@ const customerSuccess = plugin(customerSuccessId, {
     NoSlaRiskTickets: '' as IntlString,
     NoHumanActiveTickets: '' as IntlString,
     NoEscalatedTickets: '' as IntlString,
-    NoResolvedTickets: '' as IntlString
+    NoResolvedTickets: '' as IntlString,
+    ShadowingState: '' as IntlString,
+    Assignee: '' as IntlString,
+    ClaimOwner: '' as IntlString,
+    PendingAcknowledgement: '' as IntlString,
+    TakeoverConfirmed: '' as IntlString,
+    AcknowledgementExpiry: '' as IntlString,
+    RecoveryState: '' as IntlString,
+    NeedsAssignment: '' as IntlString,
+    UnauthorizedAssignee: '' as IntlString,
+    LockExpired: '' as IntlString,
+    ReconciliationPending: '' as IntlString,
+    ConversationViews: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>
