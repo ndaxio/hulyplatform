@@ -52,12 +52,23 @@ Unknown schema versions, lanes, and visibility values fail closed.
 
 ## Authorization
 
-Projection documents are partitioned by restricted Huly spaces:
+Projection documents are partitioned by three dedicated restricted typed Huly
+spaces. The package now defines `ConversationProjectionSpace`,
+`ConversationProjectionSpaceTypeData`, metadata keys for the three lane ids, and
+default ids:
+
+- `ndax:support:projection:public`
+- `ndax:support:projection:internal`
+- `ndax:support:projection:restricted`
+
+The browser resolves those ids from metadata when available and otherwise uses
+the defaults above. Each transcript lane is queried independently by exact
+`space`, `issueId`, `visibility`, and `schemaVersion: 1`.
 
 | Visibility | Space membership |
 |---|---|
-| `public` | Customer Success support agents and leads. |
-| `internal` | Customer Success support agents and leads. |
+| `public` | Customer Success support agents, support leads, and assigned compliance personnel. |
+| `internal` | Customer Success support agents, support leads, and assigned compliance personnel. |
 | `restricted` | Support leads and explicitly assigned compliance personnel. |
 
 The browser queries only spaces already authorized by Huly. It never receives a
@@ -66,10 +77,17 @@ broader result and then hides rows with CSS or client-side role checks.
 `TxAccessLevel` at `AccountRole.Admin` is defense in depth for the model tracer,
 not the final writer boundary. Before production activation, each projection
 space type must assign class-scoped forbid-create, forbid-update, and
-forbid-remove permissions for `ConversationEvent` to every human role. Huly's
-system account remains the only bypass for the trusted writer. A live mutation
-test must prove support agent, support lead, maintainer, owner, and ordinary
-admin sessions cannot forge or alter an event.
+forbid-remove permissions for both `ConversationEvent` and
+`ConversationBinding`, plus projection-space update/remove and role-mixin
+update forbids, to every human role in the space type. Huly's restricted
+space middleware keeps a single bypass for `core.account.System`, which is the
+trusted writer path. A live mutation test must prove support agent, support
+lead, maintainer, owner, and ordinary admin sessions cannot forge or alter an
+event or binding.
+
+This worktree defines the typed space model, the nine forbid permissions, the
+three role documents, and the client metadata hooks. It does not provision the
+three concrete space documents or their role-member assignments in this repo.
 
 ## Writer Rules
 
@@ -93,22 +111,27 @@ The trusted adapter writer must:
 ## Ordering And Pagination
 
 Canonical display order is the immutable tuple `(occurredAt ASC, eventId ASC)`.
-The live subscription fetches the newest 100 events in descending tuple order,
-then the client renders that bounded window in canonical ascending order. This
-keeps new events visible after a conversation exceeds one page. Huly document
-`createdOn`, `modifiedOn`, and arrival order are not timeline order.
+The live tracer opens three reactive subscriptions, one for each visibility
+lane. Each lane fetches the newest 100 events in descending tuple order, and
+the client merges authorized pages by `(space, eventId)` before rendering the
+combined transcript in canonical ascending order. Huly document `createdOn`,
+`modifiedOn`, and arrival order are not timeline order.
 
-The opaque cursor encodes `{ version: 1, occurredAt, eventId }`. An `after`
-catch-up query is strictly after the newest known tuple:
+The opaque cursor is base64url-encoded JSON with the exact shape
+`{ v: 1, issueId, spaceId, visibility, occurredAt, eventId }`. Decode succeeds
+only when the cursor is replayed in the same issue, projection space, and
+visibility context that produced it.
+
+An `after` catch-up query is strictly after the newest known tuple:
 
 ```text
 occurredAt > cursor.occurredAt
 OR (occurredAt == cursor.occurredAt AND eventId > cursor.eventId)
 ```
 
-Page size is clamped to `1..100`. Unknown, malformed, cross-conversation, or
-wrong-version cursors return a typed fail-closed error and never replay page one.
-Page boundaries are exclusive, so retries cannot duplicate the boundary event.
+Unknown, malformed, cross-issue, cross-space, cross-visibility, or
+wrong-version cursors fail closed by returning no page query at all. Page
+boundaries are exclusive, so retries cannot duplicate the boundary event.
 
 History pagination uses a `before` cursor anchored to the oldest visible tuple:
 
@@ -117,23 +140,30 @@ occurredAt < cursor.occurredAt
 OR (occurredAt == cursor.occurredAt AND eventId < cursor.eventId)
 ```
 
-The storage query remains descending and the returned page is reversed for
-canonical display.
+The storage query remains descending and the returned page is merged back into
+the canonical ascending transcript.
 
-The current UI tracer subscribes to the first 100 public schema-v1 events only.
-Cursor navigation and additional authorized lane subscriptions remain required
-before CSSC-12 can close.
+The current UI uses the `before` cursor for the `Load earlier` action. Forward
+progress currently comes from the live per-lane subscriptions rather than an
+explicit `after` fetch, but the shared helper already supports both directions.
+
+There is no raw `ChatMessage` transcript fallback. If a projection lane is
+empty, unauthorized, malformed, or on an unknown schema, the browser renders
+only the remaining authorized `ConversationEvent` rows. The separate activity
+rail explicitly excludes `chunter:class:ChatMessage` rows as well.
 
 ## Verification Gate
 
 Completion requires all of the following:
 
 - Query-shape tests prove the UI subscribes to `ConversationEvent`, never raw
-  `ChatMessage` comments.
+  `ChatMessage` comments, and that the activity lane excludes
+  `chunter:class:ChatMessage`.
 - Mutation tests turn RED when space scoping, visibility, schema, lane, tuple
   ordering, page bound, or system-writer protections are removed.
 - Two-page tests prove monotonic order, no duplicates, no replay on an invalid
-  cursor, and no forbidden rows in serialized browser responses.
+  cursor, exact issue/space/visibility cursor binding, and no forbidden rows in
+  serialized browser responses.
 - Role-matrix live tests prove restricted events are absent at the transactor
   response for support-agent sessions and present only for authorized leads or
   compliance sessions.

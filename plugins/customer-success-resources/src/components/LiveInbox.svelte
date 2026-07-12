@@ -30,6 +30,7 @@
   import {
     buildLiveInboxQuery,
     resolveContentState,
+    resolveProjectionSpaceIds,
     resolveProjectLoadState,
     resolveSupportProjectId
   } from '../live-inbox'
@@ -42,6 +43,11 @@
   const contentQuery = createQuery()
   const viewletQuery = createQuery()
   const projectId = resolveSupportProjectId(getMetadata(customerSuccess.metadata.SupportProjectId))
+  const projectionSpaceIds = resolveProjectionSpaceIds({
+    public: getMetadata(customerSuccess.metadata.PublicProjectionSpaceId),
+    internal: getMetadata(customerSuccess.metadata.InternalProjectionSpaceId),
+    restricted: getMetadata(customerSuccess.metadata.RestrictedProjectionSpaceId)
+  })
 
   let state: InboxState = 'loading'
   let project: Project | undefined
@@ -127,7 +133,12 @@
 </script>
 
 {#if selectedIssueIdentifier !== undefined}
-  <ConversationDetail {projectId} issueIdentifier={selectedIssueIdentifier} onClose={closeConversation} />
+  <ConversationDetail
+    {projectId}
+    {projectionSpaceIds}
+    issueIdentifier={selectedIssueIdentifier}
+    onClose={closeConversation}
+  />
 {:else if state === 'loading'}
   <Loading />
 {:else if state === 'denied'}

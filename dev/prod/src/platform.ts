@@ -25,7 +25,7 @@ import { cardId } from '@hcengineering/card'
 import { chunterId } from '@hcengineering/chunter'
 import client, { clientId } from '@hcengineering/client'
 import contactPlugin, { contactId } from '@hcengineering/contact'
-import customerSuccess, { customerSuccessId } from '@hcengineering/customer-success'
+import customerSuccess, { customerSuccessId, type ConversationProjectionSpace } from '@hcengineering/customer-success'
 import { converterId } from '@hcengineering/converter'
 import { documentsId } from '@hcengineering/controlled-documents'
 import { desktopPreferencesId } from '@hcengineering/desktop-preferences'
@@ -157,6 +157,9 @@ import { configureAnalytics } from './analytics'
 
 export interface Config {
   CUSTOMER_SUCCESS_PROJECT_ID?: string
+  CUSTOMER_SUCCESS_PUBLIC_PROJECTION_SPACE_ID?: string
+  CUSTOMER_SUCCESS_INTERNAL_PROJECTION_SPACE_ID?: string
+  CUSTOMER_SUCCESS_RESTRICTED_PROJECTION_SPACE_ID?: string
   ACCOUNTS_URL: string
   UPLOAD_URL: string
   FILES_URL: string
@@ -556,6 +559,24 @@ export async function configurePlatform() {
     setMetadata(
       customerSuccess.metadata.SupportProjectId,
       config.CUSTOMER_SUCCESS_PROJECT_ID as Ref<Project>
+    )
+  }
+  if (config.CUSTOMER_SUCCESS_PUBLIC_PROJECTION_SPACE_ID !== undefined) {
+    setMetadata(
+      customerSuccess.metadata.PublicProjectionSpaceId,
+      config.CUSTOMER_SUCCESS_PUBLIC_PROJECTION_SPACE_ID as Ref<ConversationProjectionSpace>
+    )
+  }
+  if (config.CUSTOMER_SUCCESS_INTERNAL_PROJECTION_SPACE_ID !== undefined) {
+    setMetadata(
+      customerSuccess.metadata.InternalProjectionSpaceId,
+      config.CUSTOMER_SUCCESS_INTERNAL_PROJECTION_SPACE_ID as Ref<ConversationProjectionSpace>
+    )
+  }
+  if (config.CUSTOMER_SUCCESS_RESTRICTED_PROJECTION_SPACE_ID !== undefined) {
+    setMetadata(
+      customerSuccess.metadata.RestrictedProjectionSpaceId,
+      config.CUSTOMER_SUCCESS_RESTRICTED_PROJECTION_SPACE_ID as Ref<ConversationProjectionSpace>
     )
   }
 

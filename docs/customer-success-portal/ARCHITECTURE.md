@@ -1,6 +1,6 @@
 # Customer Success Portal Architecture
 
-Status: CSSC-11 implemented with rendered certification pending; CSSC-12 partial tracer under review
+Status: CSSC-11 implemented with rendered certification pending; CSSC-12 projection detail tracer now reads three authorized projection lanes with pagination helpers, but deployment wiring and space provisioning remain incomplete
 
 ## Decision
 
@@ -76,18 +76,50 @@ project, and `tracker.ids.NoParent` all match. Transcript and activity remain
 separate subscriptions; they are never merged into a synthetic timestamp
 timeline.
 
-The browser transcript no longer subscribes to raw `ChatMessage` comments. It
-queries only schema-v1 `ConversationEvent` projection documents in an authorized
-Huly projection space, bounded to the newest 100 rows and displayed by the
-immutable `occurredAt + eventId` tuple. Unknown schemas, lanes, and visibility
-values fail closed. Client classification remains defense in depth, not the
-authorization boundary.
+The browser transcript no longer subscribes to raw `ChatMessage` comments. The
+live inbox resolves three projection space ids, passes them into the detail
+component, and the detail component opens three independent schema-v1
+`ConversationEvent` subscriptions:
 
-The event model and first public-lane query are only a tracer. CSSC-12 cannot
-close until the trusted adapter writer, dedicated role-restricted projection
-spaces, class-scoped human mutation forbids, internal/restricted subscriptions,
-opaque cursor pagination, and live role-matrix evidence are complete. See
-`PROJECTION-CONTRACT.md`. UI concealment of a broader raw subscription is
+- `public`
+- `internal`
+- `restricted`
+
+Each subscription is scoped by exact `space`, `issueId`, `visibility`, and
+`schemaVersion: 1`. The client merges only those already-authorized results and
+renders them by the immutable `(occurredAt, eventId)` tuple. Unknown schemas,
+lanes, and visibility values fail closed. Client classification remains defense
+in depth, not the authorization boundary.
+
+The activity rail is still a separate project-scoped `ActivityMessage` query.
+It explicitly excludes `comments` collections and raw
+`chunter:class:ChatMessage` rows, so there is no transcript fallback path
+through generic chat comments.
+
+Opaque conversation cursors are now context-bound to
+`(issueId, spaceId, visibility, occurredAt, eventId)` and encoded as
+base64url JSON. The shared helper supports both `before` and `after` page
+queries with exclusive tuple bounds; the current UI consumes `before` for
+`Load earlier`, while reactive subscriptions handle forward updates.
+
+The model layer now defines a dedicated `ConversationProjectionSpace` typed
+space, a `ConversationProjectionSpaceTypeData` mixin, three projection roles,
+and nine space-scoped human mutation forbids covering create, update, and remove
+for `ConversationEvent` and `ConversationBinding`, plus projection-space and
+role-assignment mutation. Restricted-space
+enforcement keeps a single system-account bypass for the trusted writer.
+
+CSSC-12 is still not fully closed. The docs and code now agree on the read
+model, subscription shape, and cursor contract, but two deployment-facing
+steps remain:
+
+1. Production metadata overrides are wired, but deployment values still need
+   to be set when a rollout does not use the deterministic defaults.
+2. This repo defines the projection space type and default ids; the companion
+   adapter branch provisions the three concrete typed spaces and role-member
+   assignments, which still require deployment and live proof.
+
+See `PROJECTION-CONTRACT.md`. UI concealment of a broader raw subscription is
 explicitly prohibited.
 
 English and French are the authored operator locales for this delivery. Other

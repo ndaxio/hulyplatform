@@ -15,6 +15,10 @@
     "SupportAgent": "Support agent",
     "System": "System",
     "NoMessages": "No conversation messages",
+    "LoadEarlier": "Load earlier messages",
+    "PublicVisibility": "Public",
+    "InternalVisibility": "Internal",
+    "RestrictedVisibility": "Restricted",
     "NoActivity": "No ticket activity",
     "TicketNotFound": "Ticket unavailable"
   }

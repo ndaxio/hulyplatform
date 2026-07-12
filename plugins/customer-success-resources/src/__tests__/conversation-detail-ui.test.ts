@@ -15,7 +15,8 @@ const inboxSource = readFileSync(join(componentDir, 'LiveInbox.svelte'), 'utf8')
 describe('conversation detail UI security contract', () => {
   it('uses project-scoped read-only queries and separates transcript from activity', () => {
     expect(detailSource).toContain('buildConversationIssueQuery(supportProjectId, identifier)')
-    expect(detailSource).toContain('buildConversationTranscriptQuery(projectId, target._id)')
+    expect(detailSource).toContain('projectionSpaceIds[visibility]')
+    expect(detailSource).toContain("['public', 'internal', 'restricted'] as const")
     expect(detailSource).toContain('buildConversationHistoryQuery(projectId, target._id)')
     expect(detailSource).toContain('readonly: true')
     expect(detailSource).toContain('withActions: false')
@@ -24,11 +25,23 @@ describe('conversation detail UI security contract', () => {
 
   it('subscribes to the materialized projection instead of raw chat comments', () => {
     expect(detailSource).toContain('customerSuccess.class.ConversationEvent')
-    expect(detailSource).toContain('visibleConversationEntries(result as SupportConversationEvent[])')
+    expect(detailSource).toContain('visibleConversationEntries(')
     expect(detailSource).toContain('buildConversationEventFindOptions()')
+    expect(detailSource).toContain("buildConversationPageQuery(context, cursor, 'before')")
+    expect(detailSource).toContain('mergeConversationEventPages(')
+    expect(detailSource).toContain('paginationRequest.invalidate()')
+    expect(detailSource).toContain('issue?._id !== targetId')
     expect(detailSource).not.toContain('chunter.class.ChatMessage')
     expect(detailSource).not.toContain('ndax_support_public_reply')
     expect(detailSource).not.toContain('createdBy ===')
+  })
+
+  it('labels non-public events and never hides authorization behind CSS-only filtering', () => {
+    expect(detailSource).toContain("entry.visibility === 'internal'")
+    expect(detailSource).toContain("entry.visibility === 'restricted'")
+    expect(detailSource).toContain('visibilityLabel(entry.visibility)')
+    expect(detailSource).toContain('customerSuccess.string.LoadEarlier')
+    expect(detailSource).not.toContain('filter((entry) => entry.visibility')
   })
 
   it('does not import write-capable issue or chat controls', () => {

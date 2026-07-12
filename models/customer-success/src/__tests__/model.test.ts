@@ -71,9 +71,20 @@ describe('Customer Success application model', () => {
 
     createModel(builder as any)
 
-    expect(builder.createModel).toHaveBeenCalledWith(expect.any(Function), expect.any(Function))
+    expect(builder.createModel).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function)
+    )
     expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationEvent')).toBe(true)
     expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationBinding')).toBe(true)
+    expect(builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationProjectionSpace')).toBe(
+      true
+    )
+    expect(
+      builder.createModel.mock.calls.flat().some((model) => model.name === 'TConversationProjectionSpaceTypeData')
+    ).toBe(true)
     const modelSource = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8')
     expect(modelSource).toContain("export const DOMAIN_CUSTOMER_SUCCESS = 'customer-success' as Domain")
     expect(modelSource).toContain(
@@ -105,6 +116,96 @@ describe('Customer Success application model', () => {
         removeAccessLevel: AccountRole.Admin
       }
     )
+
+    const permissionCalls = builder.createDoc.mock.calls.filter(([docClass]) => docClass === 'core:class:Permission')
+    expect(permissionCalls).toHaveLength(9)
+    expect(permissionCalls.every(([, , permission]) => permission.forbid === true)).toBe(true)
+    expect(permissionCalls.every(([, , permission]) => permission.scope === 'space')).toBe(true)
+    expect(new Set(permissionCalls.map(([, , permission]) => permission.txClass))).toEqual(
+      new Set(['core:class:TxCreateDoc', 'core:class:TxUpdateDoc', 'core:class:TxRemoveDoc'])
+    )
+    expect(new Set(permissionCalls.map(([, , permission]) => permission.objectClass))).toEqual(
+      new Set([
+        'customer-success:class:ConversationEvent',
+        'customer-success:class:ConversationBinding',
+        'customer-success:class:ConversationProjectionSpace',
+        'customer-success:mixin:ConversationProjectionSpaceTypeData'
+      ])
+    )
+
+    const descriptorCall = builder.createDoc.mock.calls.find(
+      ([docClass, , , docId]) =>
+        docClass === 'core:class:SpaceTypeDescriptor' &&
+        docId === 'customer-success:descriptor:ConversationProjectionSpace'
+    )
+    expect(descriptorCall?.[2]).toEqual(
+      expect.objectContaining({
+        baseClass: 'customer-success:class:ConversationProjectionSpace',
+        system: true,
+        availablePermissions: expect.arrayContaining(permissionCalls.map(([, , , permissionId]) => permissionId))
+      })
+    )
+
+    const spaceTypeCall = builder.createDoc.mock.calls.find(
+      ([docClass, , , docId]) =>
+        docClass === 'core:class:SpaceType' && docId === 'customer-success:spaceType:ConversationProjection'
+    )
+    expect(spaceTypeCall?.[2]).toEqual(
+      expect.objectContaining({
+        roles: 3,
+        targetClass: 'customer-success:mixin:ConversationProjectionSpaceTypeData'
+      })
+    )
+
+    const roleCalls = builder.createDoc.mock.calls.filter(
+      ([docClass, , role]) =>
+        docClass === 'core:class:Role' && role.attachedTo === 'customer-success:spaceType:ConversationProjection'
+    )
+    expect(roleCalls).toHaveLength(3)
+    expect(roleCalls.every(([, , role]) => role.permissions.length === 9)).toBe(true)
+  })
+
+  it('pins the system-only bypass in native restricted-space enforcement', () => {
+    const middlewareSource = readFileSync(
+      join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        'foundations',
+        'server',
+        'packages',
+        'middleware',
+        'src',
+        'spacePermissions.ts'
+      ),
+      'utf8'
+    )
+
+    expect(middlewareSource).toContain('if (account.primarySocialId === core.account.System) return true')
+    expect(middlewareSource).toContain('if (space.restricted === true)')
+    expect(middlewareSource).toContain('if (!this.restrictedSpaces.has(space))')
+    expect(middlewareSource).not.toContain('if (isSpace || !this.restrictedSpaces.has(space))')
+    expect(middlewareSource).toMatch(/permission\.forbid !== undefined \? !permission\.forbid : true/)
+  })
+
+  it('wires optional production metadata overrides for every projection lane', () => {
+    const productionSource = readFileSync(
+      join(__dirname, '..', '..', '..', '..', 'dev', 'prod', 'src', 'platform.ts'),
+      'utf8'
+    )
+
+    for (const key of [
+      'CUSTOMER_SUCCESS_PUBLIC_PROJECTION_SPACE_ID',
+      'CUSTOMER_SUCCESS_INTERNAL_PROJECTION_SPACE_ID',
+      'CUSTOMER_SUCCESS_RESTRICTED_PROJECTION_SPACE_ID'
+    ]) {
+      expect(productionSource).toContain(key)
+    }
+    expect(productionSource).toContain('customerSuccess.metadata.PublicProjectionSpaceId')
+    expect(productionSource).toContain('customerSuccess.metadata.InternalProjectionSpaceId')
+    expect(productionSource).toContain('customerSuccess.metadata.RestrictedProjectionSpaceId')
   })
 
   it('registers a standalone app with a single live inbox special and no mutation chrome', () => {

@@ -4,7 +4,14 @@
 // Licensed under the Eclipse Public License, Version 2.0.
 //
 
-import { customerSuccessId, customerSuccessLiveInboxId, defaultSupportProjectId } from '@hcengineering/customer-success'
+import {
+  customerSuccessId,
+  customerSuccessLiveInboxId,
+  defaultInternalProjectionSpaceId,
+  defaultPublicProjectionSpaceId,
+  defaultRestrictedProjectionSpaceId,
+  defaultSupportProjectId
+} from '@hcengineering/customer-success'
 import type { Ref } from '@hcengineering/core'
 import type { Project } from '@hcengineering/tracker'
 import { accessDeniedStore } from '@hcengineering/view-resources'
@@ -12,6 +19,7 @@ import { accessDeniedStore } from '@hcengineering/view-resources'
 import {
   buildLiveInboxQuery,
   resolveContentState,
+  resolveProjectionSpaceIds,
   resolveProjectLoadState,
   resolveSupportProjectId
 } from '../live-inbox'
@@ -43,6 +51,19 @@ describe('Customer Success live inbox', () => {
     const projectId = 'test:support:project' as Ref<Project>
 
     expect(resolveSupportProjectId(projectId)).toBe(projectId)
+  })
+
+  it('resolves each projection lane independently with deterministic defaults', () => {
+    expect(resolveProjectionSpaceIds({ internal: 'test:projection:internal' as any })).toEqual({
+      public: defaultPublicProjectionSpaceId,
+      internal: 'test:projection:internal',
+      restricted: defaultRestrictedProjectionSpaceId
+    })
+    expect(resolveProjectionSpaceIds({})).toEqual({
+      public: defaultPublicProjectionSpaceId,
+      internal: defaultInternalProjectionSpaceId,
+      restricted: defaultRestrictedProjectionSpaceId
+    })
   })
 
   it('queries only top-level issues in the selected support project', () => {

@@ -4,7 +4,21 @@
 // Licensed under the Eclipse Public License, Version 2.0.
 //
 
-import type { AccountUuid, Class, Doc, Markup, Ref, Timestamp } from '@hcengineering/core'
+import type {
+  AccountUuid,
+  Class,
+  Doc,
+  Markup,
+  Mixin,
+  Permission,
+  Ref,
+  Role,
+  RolesAssignment,
+  SpaceType,
+  SpaceTypeDescriptor,
+  Timestamp,
+  TypedSpace
+} from '@hcengineering/core'
 import type { IntlString, Metadata, Plugin, Resource } from '@hcengineering/platform'
 import { plugin } from '@hcengineering/platform'
 import type { Issue, Project } from '@hcengineering/tracker'
@@ -15,6 +29,10 @@ export const customerSuccessId = 'customer-success' as Plugin
 export const customerSuccessLiveInboxId = 'customer-success-live-inbox'
 
 export const defaultSupportProjectId = 'ndax:support:project:customer-success-inbox' as Ref<Project>
+export const defaultPublicProjectionSpaceId = 'ndax:support:projection:public' as Ref<ConversationProjectionSpace>
+export const defaultInternalProjectionSpaceId = 'ndax:support:projection:internal' as Ref<ConversationProjectionSpace>
+export const defaultRestrictedProjectionSpaceId =
+  'ndax:support:projection:restricted' as Ref<ConversationProjectionSpace>
 
 export type ConversationEventLane = 'customer' | 'bot' | 'agent' | 'system'
 export type ConversationEventVisibility = 'public' | 'internal' | 'restricted'
@@ -49,20 +67,53 @@ export interface ConversationBinding extends Doc {
   schemaVersion: number
 }
 
+export interface ConversationProjectionSpace extends TypedSpace {}
+
+export interface ConversationProjectionSpaceTypeData extends ConversationProjectionSpace, RolesAssignment {}
+
 const customerSuccess = plugin(customerSuccessId, {
   app: {
     CustomerSuccess: '' as Ref<Doc>
   },
   class: {
     ConversationEvent: '' as Ref<Class<ConversationEvent>>,
-    ConversationBinding: '' as Ref<Class<ConversationBinding>>
+    ConversationBinding: '' as Ref<Class<ConversationBinding>>,
+    ConversationProjectionSpace: '' as Ref<Class<ConversationProjectionSpace>>
+  },
+  mixin: {
+    ConversationProjectionSpaceTypeData: '' as Ref<Mixin<ConversationProjectionSpaceTypeData>>
+  },
+  descriptor: {
+    ConversationProjectionSpace: '' as Ref<SpaceTypeDescriptor>
+  },
+  spaceType: {
+    ConversationProjection: '' as Ref<SpaceType>
+  },
+  role: {
+    SupportAgent: '' as Ref<Role>,
+    SupportLead: '' as Ref<Role>,
+    Compliance: '' as Ref<Role>
+  },
+  permission: {
+    ForbidCreateConversationEvent: '' as Ref<Permission>,
+    ForbidUpdateConversationEvent: '' as Ref<Permission>,
+    ForbidRemoveConversationEvent: '' as Ref<Permission>,
+    ForbidCreateConversationBinding: '' as Ref<Permission>,
+    ForbidUpdateConversationBinding: '' as Ref<Permission>,
+    ForbidRemoveConversationBinding: '' as Ref<Permission>,
+    ForbidUpdateProjectionSpace: '' as Ref<Permission>,
+    ForbidRemoveProjectionSpace: '' as Ref<Permission>,
+    ForbidUpdateProjectionRoles: '' as Ref<Permission>
   },
   component: {
     LiveInbox: '' as AnyComponent,
     TicketPresenter: '' as AnyComponent
   },
   metadata: {
-    SupportProjectId: '' as Metadata<Ref<Project>>
+    SupportProjectId: '' as Metadata<Ref<Project>>,
+    PublicProjectionSpaceId: '' as Metadata<Ref<ConversationProjectionSpace>>,
+    InternalProjectionSpaceId: '' as Metadata<Ref<ConversationProjectionSpace>>,
+    RestrictedProjectionSpaceId: '' as Metadata<Ref<ConversationProjectionSpace>>
   },
   resolver: {
     Location: '' as Resource<(loc: Location) => Promise<ResolvedLocation | undefined>>
@@ -83,6 +134,10 @@ const customerSuccess = plugin(customerSuccessId, {
     SupportAgent: '' as IntlString,
     System: '' as IntlString,
     NoMessages: '' as IntlString,
+    LoadEarlier: '' as IntlString,
+    PublicVisibility: '' as IntlString,
+    InternalVisibility: '' as IntlString,
+    RestrictedVisibility: '' as IntlString,
     NoActivity: '' as IntlString,
     TicketNotFound: '' as IntlString
   },

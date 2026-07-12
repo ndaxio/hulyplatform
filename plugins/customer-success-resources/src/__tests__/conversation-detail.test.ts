@@ -4,18 +4,24 @@
 // Licensed under the Eclipse Public License, Version 2.0.
 //
 
-import type { Ref } from '@hcengineering/core'
+import type { Ref, Space } from '@hcengineering/core'
 import type { Issue, Project } from '@hcengineering/tracker'
 
 import {
   buildConversationHistoryQuery,
   buildConversationEventFindOptions,
+  buildConversationPageQuery,
   buildConversationIssueQuery,
   buildConversationTranscriptQuery,
+  carryForwardOverlappingConversationHead,
   classifyConversationEntryLane,
   closeConversationQuery,
   compareConversationEntriesAscending,
   compareConversationEventsAscending,
+  cursorForConversationEvent,
+  decodeConversationCursor,
+  encodeConversationCursor,
+  mergeConversationEventPages,
   sortConversationEntriesAscending,
   sortConversationEventsAscending,
   openConversationQuery,
@@ -30,6 +36,8 @@ describe('conversation detail helpers', () => {
   const otherProjectId = 'project:other' as Ref<Project>
   const issueId = 'issue:support:42' as Ref<Issue>
   const otherIssueId = 'issue:other:7' as Ref<Issue>
+  const publicSpaceId = 'projection:public' as Ref<Space>
+  const internalSpaceId = 'projection:internal' as Ref<Space>
 
   it.each(['SUP-42', 'CS-1', 'LIVE-999999', 'A1-0'])(
     'accepts only allowlisted issue query identifiers (%s)',
@@ -81,11 +89,17 @@ describe('conversation detail helpers', () => {
     expect(openConversationQuery(current, 'SUP-42<script>')).toBe(current)
   })
 
-  it('queries only the materialized public projection for the transcript lane', () => {
-    expect(buildConversationTranscriptQuery(projectId, issueId)).toEqual({
-      space: projectId,
+  it('queries each materialized projection lane by its exact authorized space', () => {
+    expect(buildConversationTranscriptQuery(publicSpaceId, issueId)).toEqual({
+      space: publicSpaceId,
       issueId,
       visibility: 'public',
+      schemaVersion: 1
+    })
+    expect(buildConversationTranscriptQuery(internalSpaceId, issueId, 'internal')).toEqual({
+      space: internalSpaceId,
+      issueId,
+      visibility: 'internal',
       schemaVersion: 1
     })
 
@@ -99,8 +113,8 @@ describe('conversation detail helpers', () => {
       }
     })
 
-    expect(buildConversationTranscriptQuery(otherProjectId, otherIssueId)).toEqual({
-      space: otherProjectId,
+    expect(buildConversationTranscriptQuery(publicSpaceId, otherIssueId)).toEqual({
+      space: publicSpaceId,
       issueId: otherIssueId,
       visibility: 'public',
       schemaVersion: 1
@@ -121,8 +135,10 @@ describe('conversation detail helpers', () => {
     [{ lane: 'customer', visibility: 'public', schemaVersion: 1 }, 'customer'],
     [{ lane: 'bot', visibility: 'public', schemaVersion: 1 }, 'bot'],
     [{ lane: 'system', visibility: 'public', schemaVersion: 1 }, 'system'],
-    [{ lane: 'agent', visibility: 'public', schemaVersion: 1 }, 'agent']
-  ] as const)('classifies exact schema-v1 public projection lanes (%j)', (entry, expected) => {
+    [{ lane: 'agent', visibility: 'public', schemaVersion: 1 }, 'agent'],
+    [{ lane: 'agent', visibility: 'internal', schemaVersion: 1 }, 'agent'],
+    [{ lane: 'agent', visibility: 'restricted', schemaVersion: 1 }, 'agent']
+  ] as const)('classifies exact schema-v1 authorized projection lanes (%j)', (entry, expected) => {
     expect(classifyConversationEntryLane(entry)).toBe(expected)
   })
 
@@ -130,13 +146,15 @@ describe('conversation detail helpers', () => {
     undefined,
     null,
     {},
-    { lane: 'customer', visibility: 'internal', schemaVersion: 1 },
-    { lane: 'agent', visibility: 'restricted', schemaVersion: 1 },
+    { lane: 'customer', visibility: 'private', schemaVersion: 1 },
     { lane: 'customer', visibility: 'public', schemaVersion: 0 },
     { lane: 'customer', visibility: 'public', schemaVersion: 2 },
     { lane: 'unknown', visibility: 'public', schemaVersion: 1 },
     { lane: ['agent'], visibility: 'public', schemaVersion: 1 },
-    { lane: 'agent', visibility: 'PUBLIC', schemaVersion: 1 }
+    { lane: 'agent', visibility: 'PUBLIC', schemaVersion: 1 },
+    { lane: 'customer', visibility: 'internal', schemaVersion: 1 },
+    { lane: 'bot', visibility: 'restricted', schemaVersion: 1 },
+    { lane: 'system', visibility: 'internal', schemaVersion: 1 }
   ])('fails closed for hidden, malformed, unknown, and unsupported projection events (%j)', (entry) => {
     expect(classifyConversationEntryLane(entry as any)).toBeUndefined()
   })
@@ -204,7 +222,7 @@ describe('conversation detail helpers', () => {
     expect(compareConversationEventsAscending(events[2], events[1])).toBeLessThan(0)
   })
 
-  it('returns only exact schema-v1 public lanes from mixed projection results', () => {
+  it('returns all exact schema-v1 authorized lanes from mixed projection results', () => {
     const makeEntry = (
       id: string,
       lane: string,
@@ -230,10 +248,138 @@ describe('conversation detail helpers', () => {
       makeEntry('entry-3', 'unknown')
     ])
 
-    expect(visible.map(({ message, lane }) => [message._id, lane])).toEqual([
-      ['entry-1', 'customer'],
-      ['entry-2', 'bot']
+    expect(visible.map(({ message, lane, visibility }) => [message._id, lane, visibility])).toEqual([
+      ['entry-1', 'customer', 'public'],
+      ['entry-2', 'bot', 'public'],
+      ['entry-4', 'agent', 'restricted']
     ])
+  })
+
+  it('round-trips an opaque cursor only in the exact issue, space, and visibility context', () => {
+    const context = { issueId, spaceId: publicSpaceId, visibility: 'public' as const }
+    const cursor = cursorForConversationEvent(context, { occurredAt: 100, eventId: 'evt-100' })
+
+    expect(cursor).not.toContain('issue:support:42')
+    expect(decodeConversationCursor(cursor, context)).toEqual({
+      v: 1,
+      issueId,
+      spaceId: publicSpaceId,
+      visibility: 'public',
+      occurredAt: 100,
+      eventId: 'evt-100'
+    })
+    expect(decodeConversationCursor(cursor, { ...context, issueId: otherIssueId })).toBeUndefined()
+    expect(decodeConversationCursor(cursor, { ...context, spaceId: internalSpaceId })).toBeUndefined()
+    expect(decodeConversationCursor(cursor, { ...context, visibility: 'internal' })).toBeUndefined()
+  })
+
+  it.each(['', 'not base64!', 'e30', 'eyJ2IjoyfQ'])(
+    'fails closed for malformed or unsupported cursors (%s)',
+    (cursor) => {
+      expect(
+        decodeConversationCursor(cursor, { issueId, spaceId: publicSpaceId, visibility: 'public' })
+      ).toBeUndefined()
+    }
+  )
+
+  it('rejects unknown cursor fields and unsafe tuple values', () => {
+    expect(() =>
+      encodeConversationCursor({
+        v: 1,
+        issueId,
+        spaceId: publicSpaceId,
+        visibility: 'public',
+        occurredAt: -1,
+        eventId: 'evt-1'
+      })
+    ).toThrow('invalid_conversation_cursor')
+  })
+
+  it('builds exclusive before and after page predicates without replaying page one', () => {
+    const context = { issueId, spaceId: publicSpaceId, visibility: 'public' as const }
+    const cursor = cursorForConversationEvent(context, { occurredAt: 100, eventId: 'evt-100' })
+
+    expect(buildConversationPageQuery(context, cursor, 'before')).toEqual({
+      space: publicSpaceId,
+      issueId,
+      visibility: 'public',
+      schemaVersion: 1,
+      $or: [{ occurredAt: { $lt: 100 } }, { occurredAt: 100, eventId: { $lt: 'evt-100' } }]
+    })
+    expect(buildConversationPageQuery(context, cursor, 'after')).toEqual({
+      space: publicSpaceId,
+      issueId,
+      visibility: 'public',
+      schemaVersion: 1,
+      $or: [{ occurredAt: { $gt: 100 } }, { occurredAt: 100, eventId: { $gt: 'evt-100' } }]
+    })
+    expect(buildConversationPageQuery(context, 'invalid', 'before')).toBeUndefined()
+  })
+
+  it('merges overlapping pages by space and event id in canonical order', () => {
+    const makeEvent = (space: Ref<Space>, eventId: string, occurredAt: number): any => ({
+      _id: `${space}:${eventId}`,
+      _class: 'customer-success:class:ConversationEvent',
+      space,
+      issueId,
+      eventId,
+      occurredAt,
+      lane: 'agent',
+      visibility: space === publicSpaceId ? 'public' : 'internal',
+      schemaVersion: 1
+    })
+    const shared = makeEvent(publicSpaceId, 'evt-2', 20)
+    const merged = mergeConversationEventPages(
+      [shared, makeEvent(publicSpaceId, 'evt-3', 30)],
+      [makeEvent(publicSpaceId, 'evt-1', 10), { ...shared }],
+      [makeEvent(internalSpaceId, 'evt-2', 15)]
+    )
+
+    expect(merged.map((event) => `${event.space}:${event.eventId}`)).toEqual([
+      'projection:public:evt-1',
+      'projection:internal:evt-2',
+      'projection:public:evt-2',
+      'projection:public:evt-3'
+    ])
+  })
+
+  it('carries an overlapping live head forward without dropping the middle page', () => {
+    const makeEvent = (eventId: string, occurredAt: number): any => ({
+      _id: `${publicSpaceId}:${eventId}`,
+      _class: 'customer-success:class:ConversationEvent',
+      space: publicSpaceId,
+      issueId,
+      eventId,
+      occurredAt,
+      lane: 'agent',
+      visibility: 'public',
+      schemaVersion: 1
+    })
+    const historical = Array.from({ length: 100 }, (_, index) => makeEvent(`evt-${index + 1}`, index + 1))
+    const previousHead = Array.from({ length: 100 }, (_, index) => makeEvent(`evt-${index + 101}`, index + 101))
+    const nextHead = Array.from({ length: 100 }, (_, index) => makeEvent(`evt-${index + 121}`, index + 121))
+
+    const carried = carryForwardOverlappingConversationHead(historical, previousHead, nextHead)
+    const visible = mergeConversationEventPages(carried, nextHead)
+
+    expect(visible).toHaveLength(220)
+    expect(visible.map((event) => event.occurredAt)).toEqual(Array.from({ length: 220 }, (_, index) => index + 1))
+  })
+
+  it('clears cached history when a replacement head no longer overlaps', () => {
+    const makeEvent = (eventId: string, occurredAt: number): any => ({
+      _id: `${publicSpaceId}:${eventId}`,
+      _class: 'customer-success:class:ConversationEvent',
+      space: publicSpaceId,
+      issueId,
+      eventId,
+      occurredAt,
+      lane: 'agent',
+      visibility: 'public',
+      schemaVersion: 1
+    })
+
+    expect(carryForwardOverlappingConversationHead([makeEvent('evt-1', 1)], [makeEvent('evt-2', 2)], [])).toEqual([])
   })
 
   it('drops stale asynchronous detail requests', async () => {
@@ -246,6 +392,17 @@ describe('conversation detail helpers', () => {
 
     await expect(second).resolves.toBe('SUP-2')
     await expect(first).resolves.toBeUndefined()
+  })
+
+  it('drops stale asynchronous pagination requests after invalidation', async () => {
+    const gate = new LatestConversationRequest()
+    let resolvePage!: (value: string[]) => void
+    const stalePage = gate.run(async () => await new Promise<string[]>((resolve) => (resolvePage = resolve)))
+
+    gate.invalidate()
+    resolvePage(['SUP-1 older event'])
+
+    await expect(stalePage).resolves.toBeUndefined()
   })
 
   it('uses modifiedOn and then _id as stable tie-breakers for ascending comparisons', () => {

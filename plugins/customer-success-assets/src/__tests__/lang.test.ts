@@ -28,7 +28,9 @@ function toLocaleShape (value: unknown): unknown {
 
 it('keeps every shipped locale file structurally aligned with english', () => {
   const langDir = join(__dirname, '../../lang')
-  const localeFiles = readdirSync(langDir).filter((file) => file.endsWith('.json')).sort()
+  const localeFiles = readdirSync(langDir)
+    .filter((file) => file.endsWith('.json'))
+    .sort()
   const englishShape = toLocaleShape(JSON.parse(readFileSync(join(langDir, 'en.json'), 'utf8')))
 
   expect(localeFiles.length).toBeGreaterThan(1)

@@ -6,27 +6,34 @@
 
 import {
   AccountRole,
+  getRoleAttributeLabel,
   IndexKind,
   SortingOrder,
   type AccountUuid,
   type Domain,
   type Markup,
+  type Permission,
   type Ref,
+  type Role,
   type Timestamp
 } from '@hcengineering/core'
 import customerSuccess, {
-  type ConversationEvent,
   type ConversationBinding,
+  type ConversationEvent,
   type ConversationEventLane,
   type ConversationEventSource,
   type ConversationEventVisibility,
+  type ConversationProjectionSpace,
+  type ConversationProjectionSpaceTypeData,
   customerSuccessId,
   customerSuccessLiveInboxId
 } from '@hcengineering/customer-success'
 import inbox from '@hcengineering/inbox'
 import {
+  ArrOf,
   type Builder,
   Index,
+  Mixin,
   Model,
   Prop,
   TypeAccountUuid,
@@ -37,7 +44,7 @@ import {
   TypeTimestamp
 } from '@hcengineering/model'
 import contact from '@hcengineering/model-contact'
-import core, { TDoc } from '@hcengineering/model-core'
+import core, { TDoc, TTypedSpace } from '@hcengineering/model-core'
 import tracker from '@hcengineering/model-tracker'
 import view from '@hcengineering/model-view'
 import workbench from '@hcengineering/model-workbench'
@@ -118,6 +125,156 @@ export class TConversationBinding extends TDoc implements ConversationBinding {
     schemaVersion!: number
 }
 
+@Model(customerSuccess.class.ConversationProjectionSpace, core.class.TypedSpace, DOMAIN_CUSTOMER_SUCCESS)
+export class TConversationProjectionSpace extends TTypedSpace implements ConversationProjectionSpace {}
+
+@Mixin(customerSuccess.mixin.ConversationProjectionSpaceTypeData, customerSuccess.class.ConversationProjectionSpace)
+export class TConversationProjectionSpaceTypeData
+  extends TConversationProjectionSpace
+  implements ConversationProjectionSpaceTypeData {
+  [key: Ref<Role>]: AccountUuid[]
+}
+
+const projectionForbidPermissions: Ref<Permission>[] = [
+  customerSuccess.permission.ForbidCreateConversationEvent,
+  customerSuccess.permission.ForbidUpdateConversationEvent,
+  customerSuccess.permission.ForbidRemoveConversationEvent,
+  customerSuccess.permission.ForbidCreateConversationBinding,
+  customerSuccess.permission.ForbidUpdateConversationBinding,
+  customerSuccess.permission.ForbidRemoveConversationBinding,
+  customerSuccess.permission.ForbidUpdateProjectionSpace,
+  customerSuccess.permission.ForbidRemoveProjectionSpace,
+  customerSuccess.permission.ForbidUpdateProjectionRoles
+]
+
+const projectionRoles: Array<{ _id: Ref<Role>, name: string }> = [
+  { _id: customerSuccess.role.SupportAgent, name: 'Support agent' },
+  { _id: customerSuccess.role.SupportLead, name: 'Support lead' },
+  { _id: customerSuccess.role.Compliance, name: 'Compliance' }
+]
+
+function defineProjectionSecurity (builder: Builder): void {
+  for (const role of projectionRoles) {
+    Prop(ArrOf(TypeAccountUuid()), getRoleAttributeLabel(role.name))(
+      TConversationProjectionSpaceTypeData.prototype,
+      role._id
+    )
+  }
+
+  const permissionSpecs = [
+    [
+      customerSuccess.permission.ForbidCreateConversationEvent,
+      core.class.TxCreateDoc,
+      customerSuccess.class.ConversationEvent,
+      'Create conversation event'
+    ],
+    [
+      customerSuccess.permission.ForbidUpdateConversationEvent,
+      core.class.TxUpdateDoc,
+      customerSuccess.class.ConversationEvent,
+      'Update conversation event'
+    ],
+    [
+      customerSuccess.permission.ForbidRemoveConversationEvent,
+      core.class.TxRemoveDoc,
+      customerSuccess.class.ConversationEvent,
+      'Remove conversation event'
+    ],
+    [
+      customerSuccess.permission.ForbidCreateConversationBinding,
+      core.class.TxCreateDoc,
+      customerSuccess.class.ConversationBinding,
+      'Create conversation binding'
+    ],
+    [
+      customerSuccess.permission.ForbidUpdateConversationBinding,
+      core.class.TxUpdateDoc,
+      customerSuccess.class.ConversationBinding,
+      'Update conversation binding'
+    ],
+    [
+      customerSuccess.permission.ForbidRemoveConversationBinding,
+      core.class.TxRemoveDoc,
+      customerSuccess.class.ConversationBinding,
+      'Remove conversation binding'
+    ],
+    [
+      customerSuccess.permission.ForbidUpdateProjectionSpace,
+      core.class.TxUpdateDoc,
+      customerSuccess.class.ConversationProjectionSpace,
+      'Update conversation projection space'
+    ],
+    [
+      customerSuccess.permission.ForbidRemoveProjectionSpace,
+      core.class.TxRemoveDoc,
+      customerSuccess.class.ConversationProjectionSpace,
+      'Remove conversation projection space'
+    ],
+    [
+      customerSuccess.permission.ForbidUpdateProjectionRoles,
+      core.class.TxUpdateDoc,
+      customerSuccess.mixin.ConversationProjectionSpaceTypeData,
+      'Update conversation projection roles'
+    ]
+  ] as const
+
+  for (const [permissionId, txClass, objectClass, label] of permissionSpecs) {
+    builder.createDoc(
+      core.class.Permission,
+      core.space.Model,
+      {
+        label: getEmbeddedLabel(`Forbid ${label.toLowerCase()}`),
+        txClass,
+        objectClass,
+        scope: 'space',
+        forbid: true
+      },
+      permissionId
+    )
+  }
+
+  builder.createDoc(
+    core.class.SpaceTypeDescriptor,
+    core.space.Model,
+    {
+      name: getEmbeddedLabel('Customer Success conversation projection'),
+      description: getEmbeddedLabel('Restricted immutable conversation projection storage'),
+      icon: inbox.icon.Inbox,
+      baseClass: customerSuccess.class.ConversationProjectionSpace,
+      availablePermissions: projectionForbidPermissions,
+      system: true
+    },
+    customerSuccess.descriptor.ConversationProjectionSpace
+  )
+
+  builder.createDoc(
+    core.class.SpaceType,
+    core.space.Model,
+    {
+      name: 'Customer Success conversation projection',
+      descriptor: customerSuccess.descriptor.ConversationProjectionSpace,
+      roles: projectionRoles.length,
+      targetClass: customerSuccess.mixin.ConversationProjectionSpaceTypeData
+    },
+    customerSuccess.spaceType.ConversationProjection
+  )
+
+  for (const role of projectionRoles) {
+    builder.createDoc(
+      core.class.Role,
+      core.space.Model,
+      {
+        attachedTo: customerSuccess.spaceType.ConversationProjection,
+        attachedToClass: core.class.SpaceType,
+        collection: 'roles',
+        name: role.name,
+        permissions: projectionForbidPermissions
+      },
+      role._id
+    )
+  }
+}
+
 export const liveInboxViewletConfig: Viewlet['config'] = [
   {
     key: '',
@@ -162,7 +319,14 @@ export const liveInboxViewletConfig: Viewlet['config'] = [
 ]
 
 export function createModel (builder: Builder): void {
-  builder.createModel(TConversationEvent, TConversationBinding)
+  builder.createModel(
+    TConversationEvent,
+    TConversationBinding,
+    TConversationProjectionSpace,
+    TConversationProjectionSpaceTypeData
+  )
+
+  defineProjectionSecurity(builder)
 
   builder.mixin(customerSuccess.class.ConversationEvent, core.class.Class, core.mixin.TxAccessLevel, {
     createAccessLevel: AccountRole.Admin,

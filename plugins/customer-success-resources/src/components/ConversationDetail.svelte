@@ -5,7 +5,10 @@
 -->
 <script lang="ts">
   import activity, { type ActivityMessage } from '@hcengineering/activity'
-  import customerSuccess, { type ConversationEvent } from '@hcengineering/customer-success'
+  import customerSuccess, {
+    type ConversationEvent,
+    type ConversationProjectionSpace
+  } from '@hcengineering/customer-success'
   import { DateRangeMode, SortingOrder, type DocumentQuery, type Ref } from '@hcengineering/core'
   import type { IntlString } from '@hcengineering/platform'
   import inbox from '@hcengineering/inbox'
@@ -30,16 +33,22 @@
     buildConversationHistoryQuery,
     buildConversationIssueQuery,
     buildConversationEventFindOptions,
+    buildConversationPageQuery,
     buildConversationTranscriptQuery,
+    carryForwardOverlappingConversationHead,
+    cursorForConversationEvent,
     LatestConversationRequest,
+    mergeConversationEventPages,
     sortConversationEntriesAscending,
     visibleConversationEntries,
     type ConversationEntryDoc,
-    type ConversationEntryLane
+    type ConversationEntryLane,
+    type ConversationVisibilityLane
   } from '../conversation-detail'
 
   export let issueIdentifier: string
   export let projectId: Ref<Project>
+  export let projectionSpaceIds: Record<ConversationVisibilityLane, Ref<ConversationProjectionSpace>>
   export let onClose: () => void
 
   type DetailState = 'loading' | 'ready' | 'denied' | 'error'
@@ -47,28 +56,61 @@
   interface VisibleMessage {
     message: SupportConversationEvent
     lane: ConversationEntryLane
+    visibility: ConversationVisibilityLane
   }
 
   const client = getClient()
-  const transcriptQuery = createQuery()
+  const transcriptQueries = {
+    public: createQuery(),
+    internal: createQuery(),
+    restricted: createQuery()
+  }
   const historyQuery = createQuery()
   const issueRequest = new LatestConversationRequest()
+  const paginationRequest = new LatestConversationRequest()
 
   let state: DetailState = 'loading'
   let issue: Issue | undefined
   let issueStatus: IssueStatus | undefined
   let visibleMessages: VisibleMessage[] = []
+  let headMessages: Record<ConversationVisibilityLane, SupportConversationEvent[]> = {
+    public: [],
+    internal: [],
+    restricted: []
+  }
+  let historicalMessages: Record<ConversationVisibilityLane, SupportConversationEvent[]> = {
+    public: [],
+    internal: [],
+    restricted: []
+  }
+  let transcriptLaneLoaded: Record<ConversationVisibilityLane, boolean> = {
+    public: false,
+    internal: false,
+    restricted: false
+  }
+  let canLoadEarlier: Record<ConversationVisibilityLane, boolean> = {
+    public: false,
+    internal: false,
+    restricted: false
+  }
   let history: ActivityMessage[] = []
   let transcriptLoading = true
+  let earlierLoading = false
   let historyLoading = true
   let mobileLane: 'conversation' | 'activity' = 'conversation'
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
 
   function stopLaneQueries (): void {
-    transcriptQuery.unsubscribe()
+    paginationRequest.invalidate()
+    for (const query of Object.values(transcriptQueries)) query.unsubscribe()
     historyQuery.unsubscribe()
     visibleMessages = []
+    headMessages = { public: [], internal: [], restricted: [] }
+    historicalMessages = { public: [], internal: [], restricted: [] }
+    transcriptLaneLoaded = { public: false, internal: false, restricted: false }
+    canLoadEarlier = { public: false, internal: false, restricted: false }
+    earlierLoading = false
     history = []
   }
 
@@ -109,16 +151,89 @@
   function watchTranscript (target: Issue): void {
     transcriptLoading = true
     const targetId = target._id
-    transcriptQuery.query(
-      customerSuccess.class.ConversationEvent,
-      buildConversationTranscriptQuery(projectId, target._id) as DocumentQuery<ConversationEvent>,
-      (result) => {
-        if (issue?._id !== targetId) return
-        visibleMessages = visibleConversationEntries(result as SupportConversationEvent[])
-        transcriptLoading = false
-      },
-      buildConversationEventFindOptions()
+    for (const visibility of ['public', 'internal', 'restricted'] as const) {
+      transcriptQueries[visibility].query(
+        customerSuccess.class.ConversationEvent,
+        buildConversationTranscriptQuery(
+          projectionSpaceIds[visibility],
+          target._id,
+          visibility
+        ) as DocumentQuery<ConversationEvent>,
+        (result) => {
+          if (issue?._id !== targetId) return
+          const nextHead = result as SupportConversationEvent[]
+          historicalMessages = {
+            ...historicalMessages,
+            [visibility]: carryForwardOverlappingConversationHead(
+              historicalMessages[visibility],
+              headMessages[visibility],
+              nextHead
+            )
+          }
+          headMessages = { ...headMessages, [visibility]: nextHead }
+          transcriptLaneLoaded = { ...transcriptLaneLoaded, [visibility]: true }
+          canLoadEarlier = {
+            ...canLoadEarlier,
+            [visibility]: result.length === buildConversationEventFindOptions().limit
+          }
+          refreshVisibleMessages()
+          transcriptLoading = !Object.values(transcriptLaneLoaded).every(Boolean)
+        },
+        buildConversationEventFindOptions()
+      )
+    }
+  }
+
+  function refreshVisibleMessages (): void {
+    visibleMessages = visibleConversationEntries(
+      mergeConversationEventPages(...Object.values(headMessages), ...Object.values(historicalMessages))
     )
+  }
+
+  async function loadEarlierMessages (): Promise<void> {
+    if (issue === undefined || earlierLoading) return
+    const targetId = issue._id
+    earlierLoading = true
+    try {
+      const result = await paginationRequest.run(async () => {
+        let nextHistorical = { ...historicalMessages }
+        let nextCanLoadEarlier = { ...canLoadEarlier }
+        for (const visibility of ['public', 'internal', 'restricted'] as const) {
+          if (!nextCanLoadEarlier[visibility]) continue
+          const current = mergeConversationEventPages(headMessages[visibility], nextHistorical[visibility])
+          const oldest = current[0]
+          if (oldest === undefined) continue
+          const context = {
+            issueId: targetId,
+            spaceId: projectionSpaceIds[visibility],
+            visibility
+          }
+          const cursor = cursorForConversationEvent(context, oldest)
+          const query = buildConversationPageQuery(context, cursor, 'before')
+          if (query === undefined) continue
+          const page = (await client.findAll(
+            customerSuccess.class.ConversationEvent,
+            query as DocumentQuery<ConversationEvent>,
+            buildConversationEventFindOptions()
+          )) as SupportConversationEvent[]
+          nextHistorical = {
+            ...nextHistorical,
+            [visibility]: mergeConversationEventPages(nextHistorical[visibility], page)
+          }
+          nextCanLoadEarlier = {
+            ...nextCanLoadEarlier,
+            [visibility]: page.length === buildConversationEventFindOptions().limit
+          }
+        }
+        return { historicalMessages: nextHistorical, canLoadEarlier: nextCanLoadEarlier }
+      })
+      if (result === undefined || issue?._id !== targetId) return
+      historicalMessages = result.historicalMessages
+      canLoadEarlier = result.canLoadEarlier
+      refreshVisibleMessages()
+    } finally {
+      if (issue?._id === targetId) earlierLoading = false
+    }
   }
 
   function watchHistory (target: Issue): void {
@@ -146,6 +261,17 @@
         return customerSuccess.string.SupportAgent
       case 'system':
         return customerSuccess.string.System
+    }
+  }
+
+  function visibilityLabel (visibility: ConversationVisibilityLane): IntlString {
+    switch (visibility) {
+      case 'public':
+        return customerSuccess.string.PublicVisibility
+      case 'internal':
+        return customerSuccess.string.InternalVisibility
+      case 'restricted':
+        return customerSuccess.string.RestrictedVisibility
     }
   }
 
@@ -257,6 +383,15 @@
       >
         <div class="lane-header">
           <h2 id="customer-success-conversation-heading"><Label label={customerSuccess.string.Conversation} /></h2>
+          {#if Object.values(canLoadEarlier).some(Boolean)}
+            <Button
+              size="small"
+              kind="ghost"
+              label={customerSuccess.string.LoadEarlier}
+              disabled={earlierLoading}
+              on:click={loadEarlierMessages}
+            />
+          {/if}
         </div>
         <div class="lane-scroll">
           <Scroller padding="0 1rem 1rem">
@@ -267,9 +402,15 @@
             {:else}
               <div class="message-list">
                 {#each visibleMessages as entry (entry.message._id)}
-                  <article class="message-row" class:customer={entry.lane === 'customer'}>
+                  <article
+                    class="message-row"
+                    class:customer={entry.lane === 'customer'}
+                    class:internal={entry.visibility === 'internal'}
+                    class:restricted={entry.visibility === 'restricted'}
+                  >
                     <div class="message-meta">
                       <strong><Label label={laneLabel(entry.lane)} /></strong>
+                      <span class="visibility-label"><Label label={visibilityLabel(entry.visibility)} /></span>
                       <DatePresenter
                         value={entry.message.occurredAt}
                         mode={DateRangeMode.DATETIME}
@@ -475,6 +616,21 @@
     &.customer {
       border-left: 3px solid var(--theme-content-color);
     }
+
+    &.internal {
+      border-style: dashed;
+    }
+
+    &.restricted {
+      border-width: 2px;
+    }
+  }
+
+  .visibility-label {
+    padding: 0.125rem 0.375rem;
+    color: var(--theme-halfcontent-color);
+    border: 1px solid var(--theme-divider-color);
+    border-radius: 4px;
   }
 
   .message-meta {

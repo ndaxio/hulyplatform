@@ -15,6 +15,10 @@
     "SupportAgent": "Agent de soutien",
     "System": "Système",
     "NoMessages": "Aucun message de conversation",
+    "LoadEarlier": "Charger les messages précédents",
+    "PublicVisibility": "Public",
+    "InternalVisibility": "Interne",
+    "RestrictedVisibility": "Restreint",
     "NoActivity": "Aucune activité du billet",
     "TicketNotFound": "Billet indisponible"
   }
