@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "En espera de conciliación del ticket",
     "AssignLeadRequestFailed": "La solicitud de asignación falló",
     "AssignLeadRequestSuperseded": "Solicitud de asignación reemplazada",
-    "AssignLeadConfirmed": "Asignación confirmada"
+    "AssignLeadConfirmed": "Asignación confirmada",
+    "StatusActions": "Acciones de estado",
+    "WaitingOnCustomer": "En espera del cliente",
+    "WaitingOnInternal": "En espera interna",
+    "StatusRequest": "Solicitud de cambio de estado",
+    "StatusRequestPending": "Cambio de estado pendiente",
+    "StatusRequestProcessing": "Cambio de estado en proceso",
+    "StatusRequestAwaitingReconciliation": "Esperando sincronización del estado",
+    "StatusRequestFailed": "Error al cambiar el estado",
+    "StatusRequestSuperseded": "Cambio de estado reemplazado",
+    "StatusRequestConfirmed": "Cambio de estado confirmado"
   }
 }

@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Ожидается сверка обращения",
     "AssignLeadRequestFailed": "Не удалось выполнить запрос на назначение",
     "AssignLeadRequestSuperseded": "Запрос на назначение заменен",
-    "AssignLeadConfirmed": "Назначение подтверждено"
+    "AssignLeadConfirmed": "Назначение подтверждено",
+    "StatusActions": "Действия со статусом",
+    "WaitingOnCustomer": "Ожидание клиента",
+    "WaitingOnInternal": "Внутреннее ожидание",
+    "StatusRequest": "Запрос на изменение статуса",
+    "StatusRequestPending": "Изменение статуса ожидает",
+    "StatusRequestProcessing": "Изменение статуса обрабатывается",
+    "StatusRequestAwaitingReconciliation": "Ожидание синхронизации статуса",
+    "StatusRequestFailed": "Не удалось изменить статус",
+    "StatusRequestSuperseded": "Изменение статуса заменено",
+    "StatusRequestConfirmed": "Изменение статуса подтверждено"
   }
 }

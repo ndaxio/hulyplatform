@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "En attente du rapprochement du billet",
     "AssignLeadRequestFailed": "Échec de la demande d'attribution",
     "AssignLeadRequestSuperseded": "Demande d'attribution remplacée",
-    "AssignLeadConfirmed": "Attribution confirmée"
+    "AssignLeadConfirmed": "Attribution confirmée",
+    "StatusActions": "Actions de statut",
+    "WaitingOnCustomer": "En attente du client",
+    "WaitingOnInternal": "En attente interne",
+    "StatusRequest": "Demande de changement de statut",
+    "StatusRequestPending": "Changement de statut en attente",
+    "StatusRequestProcessing": "Changement de statut en cours",
+    "StatusRequestAwaitingReconciliation": "En attente de synchronisation du statut",
+    "StatusRequestFailed": "Échec du changement de statut",
+    "StatusRequestSuperseded": "Changement de statut remplacé",
+    "StatusRequestConfirmed": "Changement de statut confirmé"
   }
 }

@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Oczekiwanie na uzgodnienie zgłoszenia",
     "AssignLeadRequestFailed": "Prośba o przypisanie nie powiodła się",
     "AssignLeadRequestSuperseded": "Prośba o przypisanie zastąpiona",
-    "AssignLeadConfirmed": "Przypisanie potwierdzone"
+    "AssignLeadConfirmed": "Przypisanie potwierdzone",
+    "StatusActions": "Akcje statusu",
+    "WaitingOnCustomer": "Oczekiwanie na klienta",
+    "WaitingOnInternal": "Oczekiwanie wewnętrzne",
+    "StatusRequest": "Żądanie zmiany statusu",
+    "StatusRequestPending": "Zmiana statusu oczekuje",
+    "StatusRequestProcessing": "Zmiana statusu jest przetwarzana",
+    "StatusRequestAwaitingReconciliation": "Oczekiwanie na uzgodnienie statusu",
+    "StatusRequestFailed": "Zmiana statusu nie powiodła się",
+    "StatusRequestSuperseded": "Zmiana statusu zastąpiona",
+    "StatusRequestConfirmed": "Zmiana statusu potwierdzona"
   }
 }

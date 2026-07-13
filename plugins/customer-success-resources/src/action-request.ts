@@ -63,6 +63,22 @@ export interface AssignLeadControlState {
   requestState?: SupportActionRequestState
 }
 
+export type SupportStatusTarget = 'ndax:status:support:WaitingOnCustomer' | 'ndax:status:support:WaitingOnInternal'
+
+export interface StatusTransitionControlState {
+  visible: boolean
+  canSubmit: boolean
+  busy: boolean
+  awaitingReconciliation: boolean
+  reconciled: boolean
+  requestState?: SupportActionRequestState
+}
+
+export const supportStatusTargets: SupportStatusTarget[] = [
+  'ndax:status:support:WaitingOnCustomer',
+  'ndax:status:support:WaitingOnInternal'
+]
+
 export interface SupportActionRoleAssignments {
   supportAgent: AccountUuid[]
   supportLead: AccountUuid[]
@@ -107,6 +123,15 @@ export function reassignAssigneeSupportActionRequestId (
   return `ndax:support:action-request:${issueId}:${currentAccountUuid}:reassign_assignee:${requestedAssignee}:${expectedModifiedOn}` as Ref<SupportActionRequest>
 }
 
+export function transitionStatusSupportActionRequestId (
+  issueId: Ref<Issue>,
+  currentAccountUuid: AccountUuid,
+  requestedStatus: Ref<IssueStatus>,
+  expectedModifiedOn: Timestamp
+): Ref<SupportActionRequest> {
+  return `ndax:support:action-request:${issueId}:${currentAccountUuid}:transition_status:${requestedStatus}:${expectedModifiedOn}` as Ref<SupportActionRequest>
+}
+
 export function buildSupportActionRequestQuery (
   internalSpaceId: Ref<ConversationProjectionSpace>,
   requestId: Ref<SupportActionRequest>,
@@ -145,6 +170,13 @@ export function selectHydratedSupportActionRequestId (
       if (request.state !== 'succeeded') return true
       if (request.action === 'assign_assignee' || request.action === 'reassign_assignee') {
         return request.requestedAssignee === issue.assignee && issue.modifiedOn >= request.expectedModifiedOn
+      }
+      if (request.action === 'transition_status') {
+        return (
+          request.requestedStatus === issue.status &&
+          request.requestedAssignee === issue.assignee &&
+          issue.modifiedOn >= request.expectedModifiedOn
+        )
       }
       return (
         request.requestedAssignee === issue.assignee &&
@@ -244,6 +276,41 @@ export async function submitReassignAssigneeSupportActionRequest (
   }
 
   const ops = client.apply(requestId, 'customer-success-reassign-assignee')
+  ops.notMatch(customerSuccess.class.SupportActionRequest, { _id: requestId })
+  await ops.createDoc(customerSuccess.class.SupportActionRequest, internalSpaceId, request, requestId)
+  const committed = await ops.commit()
+
+  return { requestId, committed }
+}
+
+export async function submitTransitionStatusSupportActionRequest (
+  client: Pick<TxOperations, 'apply'>,
+  internalSpaceId: Ref<ConversationProjectionSpace>,
+  issue: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
+  currentAccountUuid: AccountUuid,
+  requestedAssignee: Ref<Person>,
+  requestedStatus: Ref<IssueStatus>
+): Promise<{ requestId: Ref<SupportActionRequest>, committed: CommitResult }> {
+  const requestId = transitionStatusSupportActionRequestId(
+    issue._id,
+    currentAccountUuid,
+    requestedStatus,
+    issue.modifiedOn
+  )
+  const request = {
+    issueId: issue._id,
+    action: 'transition_status' as const,
+    requestedAssignee,
+    requestedStatus,
+    expectedStatus: issue.status,
+    expectedAssignee: issue.assignee,
+    expectedModifiedOn: issue.modifiedOn,
+    state: 'pending' as const,
+    idempotencyKey: requestId,
+    schemaVersion: 1
+  }
+
+  const ops = client.apply(requestId, 'customer-success-transition-status')
   ops.notMatch(customerSuccess.class.SupportActionRequest, { _id: requestId })
   await ops.createDoc(customerSuccess.class.SupportActionRequest, internalSpaceId, request, requestId)
   const committed = await ops.commit()
@@ -395,6 +462,44 @@ export function resolveReassignLeadControlState (
   }
 }
 
+export function resolveStatusTransitionControlState (
+  issue: Pick<Issue, 'status' | 'assignee' | 'modifiedOn'>,
+  takeover: TakeoverChromeState,
+  actionRequest: SupportActionRequest | undefined,
+  currentEmployee: Ref<Person> | undefined,
+  canManageSupportActions: boolean,
+  submitting: boolean
+): StatusTransitionControlState {
+  const currentRequest = actionRequest?.action === 'transition_status' ? actionRequest : undefined
+  const visible =
+    canManageSupportActions &&
+    currentEmployee !== undefined &&
+    issue.assignee === currentEmployee &&
+    issue.status === 'ndax:status:support:HumanActive' &&
+    takeover.confirmed
+  const requestState = currentRequest?.state
+  const currentSnapshot = currentRequest?.expectedModifiedOn === issue.modifiedOn
+  const reconciled =
+    requestState === 'succeeded' &&
+    currentRequest?.requestedStatus === issue.status &&
+    currentRequest.requestedAssignee === issue.assignee &&
+    issue.modifiedOn >= currentRequest.expectedModifiedOn
+  const succeededRelevant = requestState === 'succeeded' && (currentSnapshot || reconciled)
+  const awaitingReconciliation = succeededRelevant && !reconciled
+  const busy = submitting || (currentSnapshot && (requestState === 'pending' || requestState === 'processing'))
+  const currentSnapshotTerminal =
+    currentSnapshot && (requestState === 'failed' || requestState === 'superseded' || requestState === 'succeeded')
+
+  return {
+    visible,
+    canSubmit: visible && !busy && !awaitingReconciliation && !reconciled && !currentSnapshotTerminal,
+    busy,
+    awaitingReconciliation,
+    reconciled,
+    requestState
+  }
+}
+
 export function isLiveSessionConfirmed (
   takeover: TakeoverChromeState,
   projection: LiveSessionState | undefined
@@ -420,6 +525,6 @@ export function shouldShowSupportActionRequestState (
 ): boolean {
   if (!hasStateLabel) return false
   if (action === 'assign_assignee' || action === 'reassign_assignee') return canAssignLead
-  if (action === 'claim_self') return canManageSupportActions
+  if (action === 'claim_self' || action === 'transition_status') return canManageSupportActions
   return false
 }

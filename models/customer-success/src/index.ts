@@ -146,6 +146,9 @@ export class TSupportActionRequest extends TDoc implements SupportActionRequest 
   @Index(IndexKind.Indexed)
     requestedAssignee!: Ref<Person>
 
+  @Prop(TypeRef(tracker.class.IssueStatus), getEmbeddedLabel('Requested status'))
+    requestedStatus?: Ref<IssueStatus>
+
   @Prop(TypeRef(tracker.class.IssueStatus), getEmbeddedLabel('Expected status'))
     expectedStatus!: Ref<IssueStatus>
 

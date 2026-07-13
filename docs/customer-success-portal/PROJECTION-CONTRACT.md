@@ -113,6 +113,10 @@ CSSC-15B adds the corresponding lead-only reassignment id:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:reassign_assignee:<requestedAssignee>:<expectedModifiedOn>`
 
+CSSC-15C adds an owner-only nonterminal status id:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:transition_status:<requestedStatus>:<expectedModifiedOn>`
+
 The browser creates it through `client.apply(requestId).notMatch(...)` guarded
 by the globally unique exact `_id`. Its reactive read subscription additionally
 requires the exact internal `space`, `issueId`, and `schemaVersion: 1`.
@@ -127,8 +131,9 @@ conflict evidence remains visible without blocking a newer-snapshot action.
 | `_id` | Deterministic id built from issue id, current account uuid, action, expected target person when the action needs one, and expected modified time. |
 | `space` | Exact internal projection space. |
 | `issueId` | Exact Huly support issue reference. |
-| `action` | `claim_self`, `assign_assignee`, or `reassign_assignee`. |
+| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, or `transition_status`. |
 | `requestedAssignee` | Huly Person the creator is requesting for claim/ack. |
+| `requestedStatus` | Required only for `transition_status`; one of the fixed schema-v1 waiting targets. |
 | `expectedStatus` | Exact issue status the request expects. |
 | `expectedAssignee` | Exact expected assignee, or null. |
 | `expectedModifiedOn` | Exact issue `modifiedOn` timestamp the browser observed. |
@@ -193,6 +198,12 @@ forbids, to every human role in the space type.
   checks, requires an already-assigned conservative source status, rejects a
   no-op target, and changes only the assignee. Takeover Requested and Human
   Active tickets cannot be transferred through this action.
+- for `transition_status`, the immutable creator must map to the unchanged
+  assigned Person, hold an internal support role, and present a current
+  acknowledged Human Active live-session projection. Schema v1 permits only
+  Human Active to Waiting on Customer or Waiting on Internal. Escalated,
+  terminal, reopen, reverse, bot-ownership, and takeover transitions are not
+  accepted by this action.
 
 The portal canonicalizes a legacy account/social-identity `Issue.assignee`
 through Huly's account-to-employee map before comparing it with the
@@ -240,7 +251,9 @@ The trusted adapter writer must:
    state; only an expired processing lease with a compatible immutable snapshot
    and the matching adapter-owned `assignment_committed` or
    `reassignment_committed` marker written atomically with the assignee CAS may
-   resume durable progress.
+   resume durable progress. Status recovery analogously requires the distinct
+   `status_transition_committed` marker, unchanged owner, allowed source/target,
+   and the committed target status.
 
 ## Ordering And Pagination
 

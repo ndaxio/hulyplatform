@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Warte auf Ticket-Abgleich",
     "AssignLeadRequestFailed": "Zuweisungsanfrage fehlgeschlagen",
     "AssignLeadRequestSuperseded": "Zuweisungsanfrage ersetzt",
-    "AssignLeadConfirmed": "Zuweisung bestätigt"
+    "AssignLeadConfirmed": "Zuweisung bestätigt",
+    "StatusActions": "Statusaktionen",
+    "WaitingOnCustomer": "Warten auf Kunden",
+    "WaitingOnInternal": "Warten auf interne Antwort",
+    "StatusRequest": "Statusänderungsanfrage",
+    "StatusRequestPending": "Statusänderung ausstehend",
+    "StatusRequestProcessing": "Statusänderung wird verarbeitet",
+    "StatusRequestAwaitingReconciliation": "Warten auf Statusabgleich",
+    "StatusRequestFailed": "Statusänderung fehlgeschlagen",
+    "StatusRequestSuperseded": "Statusänderung ersetzt",
+    "StatusRequestConfirmed": "Statusänderung bestätigt"
   }
 }

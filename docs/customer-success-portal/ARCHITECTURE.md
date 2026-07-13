@@ -191,6 +191,10 @@ CSSC-15B adds a third request shape for lead-only reassignment:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:reassign_assignee:<requestedAssignee>:<expectedModifiedOn>`
 
+CSSC-15C adds a fourth request shape for a deliberately narrow status menu:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:transition_status:<requestedStatus>:<expectedModifiedOn>`
+
 Creation is guarded by `client.apply(requestId).notMatch(...)` on the globally
 unique exact id. The reactive read additionally matches the internal space,
 issue id, and schema version. The browser does not call the adapter directly and
@@ -223,6 +227,14 @@ conservative pre-live statuses. It is a pure assignee CAS from the exact prior
 Person to a different eligible Person. It is unavailable in Takeover Requested
 and Human Active, performs no status transition, and has no compliance override
 or force-transfer path.
+
+Status controls use a native compact menu and are visible only to the confirmed
+current owner of an acknowledged Human Active session. The only schema-v1
+targets are Waiting on Customer and Waiting on Internal. The adapter requires a
+current issue-bound live-session proof and performs a status-only CAS. Escalated
+is excluded because a regulated specialist handoff requires destination,
+reason, and handoff evidence rather than a bare status; terminal and reopen
+behavior remains CSSC-15D.
 
 `SupportActionRequest.state` is advisory workflow state, not takeover truth.
 Pending, processing, failed, and superseded may be rendered reactively. Even

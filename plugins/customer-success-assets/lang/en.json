@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Awaiting issue reconciliation",
     "AssignLeadRequestFailed": "Assignment request failed",
     "AssignLeadRequestSuperseded": "Assignment request superseded",
-    "AssignLeadConfirmed": "Assignment confirmed"
+    "AssignLeadConfirmed": "Assignment confirmed",
+    "StatusActions": "Status actions",
+    "WaitingOnCustomer": "Waiting on customer",
+    "WaitingOnInternal": "Waiting on internal",
+    "StatusRequest": "Status change request",
+    "StatusRequestPending": "Status change pending",
+    "StatusRequestProcessing": "Status change processing",
+    "StatusRequestAwaitingReconciliation": "Awaiting status reconciliation",
+    "StatusRequestFailed": "Status change failed",
+    "StatusRequestSuperseded": "Status change superseded",
+    "StatusRequestConfirmed": "Status change confirmed"
   }
 }

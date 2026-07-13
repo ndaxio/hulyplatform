@@ -69,7 +69,8 @@
     shouldReleaseActiveSupportActionRequest,
     submitAssignAssigneeSupportActionRequest,
     submitClaimSelfSupportActionRequest,
-    submitReassignAssigneeSupportActionRequest
+    submitReassignAssigneeSupportActionRequest,
+    submitTransitionStatusSupportActionRequest
   } from '../action-request'
   import { buildLiveSessionStateQuery, resolveTakeoverChromeState } from '../takeover-state'
   import TakeoverStateChrome from './TakeoverStateChrome.svelte'
@@ -576,6 +577,41 @@
     }
   }
 
+  async function requestTransitionStatus (requestedStatus: Ref<IssueStatus>): Promise<void> {
+    if (
+      issue === undefined ||
+      currentEmployee === undefined ||
+      canonicalIssueAssignee !== currentEmployee ||
+      !canManageSupportActions ||
+      actionSubmitting
+    ) {
+      return
+    }
+
+    lastSubmittedAction = 'transition_status'
+    actionSubmitting = true
+    actionSubmissionFailed = false
+    try {
+      const { requestId, committed } = await submitTransitionStatusSupportActionRequest(
+        client,
+        projectionSpaceIds.internal,
+        { ...issue, assignee: canonicalIssueAssignee },
+        currentAccount.uuid,
+        currentEmployee,
+        requestedStatus
+      )
+      activeSupportActionRequestId = requestId
+      trackedSupportActionRequestId = undefined
+      if (!committed.result) {
+        actionSubmitting = false
+        supportActionRequestQuery.refreshClient()
+      }
+    } catch {
+      actionSubmitting = false
+      actionSubmissionFailed = true
+    }
+  }
+
   $: watchIssue(issueIdentifier, projectId)
   $: supportActionRoles = resolveSupportActionRoleAssignments(internalProjectionSpace, hierarchy)
   $: canManageSupportActions =
@@ -722,6 +758,7 @@
       {requestClaimSelf}
       {requestAssignLead}
       {requestReassignLead}
+      {requestTransitionStatus}
     />
 
     {#if $deviceInfo.isMobile}

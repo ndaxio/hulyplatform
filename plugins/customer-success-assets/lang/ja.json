@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "課題の照合待ち",
     "AssignLeadRequestFailed": "割り当て依頼に失敗",
     "AssignLeadRequestSuperseded": "割り当て依頼は置き換え済み",
-    "AssignLeadConfirmed": "割り当て確定"
+    "AssignLeadConfirmed": "割り当て確定",
+    "StatusActions": "ステータス操作",
+    "WaitingOnCustomer": "顧客の返信待ち",
+    "WaitingOnInternal": "社内対応待ち",
+    "StatusRequest": "ステータス変更リクエスト",
+    "StatusRequestPending": "ステータス変更を待機中",
+    "StatusRequestProcessing": "ステータス変更を処理中",
+    "StatusRequestAwaitingReconciliation": "ステータスの同期を待機中",
+    "StatusRequestFailed": "ステータス変更に失敗",
+    "StatusRequestSuperseded": "ステータス変更は置き換えられました",
+    "StatusRequestConfirmed": "ステータス変更を確認"
   }
 }

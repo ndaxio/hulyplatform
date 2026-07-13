@@ -109,6 +109,7 @@ describe('Customer Success application model', () => {
     expect(modelSource).toMatch(/class TConversationEvent[\s\S]*?conversationId!: string/)
     expect(modelSource).toMatch(/class TConversationBinding[\s\S]*?conversationId!: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedAssignee!: Ref<Person>/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedStatus\?: Ref<IssueStatus>/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseId\?: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseExpiresAt\?: Timestamp/)
     expect(modelSource).toMatch(/class TLiveSessionState[\s\S]*?conversationId\?: string/)

@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Aguardando reconciliação do chamado",
     "AssignLeadRequestFailed": "Falha na solicitação de atribuição",
     "AssignLeadRequestSuperseded": "Solicitação de atribuição substituída",
-    "AssignLeadConfirmed": "Atribuição confirmada"
+    "AssignLeadConfirmed": "Atribuição confirmada",
+    "StatusActions": "Ações de status",
+    "WaitingOnCustomer": "Aguardando o cliente",
+    "WaitingOnInternal": "Aguardando internamente",
+    "StatusRequest": "Solicitação de alteração de status",
+    "StatusRequestPending": "Alteração de status pendente",
+    "StatusRequestProcessing": "Alteração de status em processamento",
+    "StatusRequestAwaitingReconciliation": "Aguardando reconciliação do status",
+    "StatusRequestFailed": "Falha na alteração de status",
+    "StatusRequestSuperseded": "Alteração de status substituída",
+    "StatusRequestConfirmed": "Alteração de status confirmada"
   }
 }

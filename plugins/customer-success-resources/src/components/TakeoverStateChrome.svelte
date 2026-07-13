@@ -15,15 +15,25 @@
   import { DateRangeMode } from '@hcengineering/core'
   import type { DocumentQuery, Ref } from '@hcengineering/core'
   import type { IntlString } from '@hcengineering/platform'
-  import { Button, Component, DatePresenter, Label, StateTag, StateType } from '@hcengineering/ui'
+  import {
+    Button,
+    ButtonMenu,
+    Component,
+    DatePresenter,
+    Label,
+    StateTag,
+    StateType,
+    type DropdownIntlItem
+  } from '@hcengineering/ui'
   import type { Employee, Person } from '@hcengineering/contact'
-  import type { Issue } from '@hcengineering/tracker'
+  import type { Issue, IssueStatus } from '@hcengineering/tracker'
 
   import { resolveTakeoverChromeState } from '../takeover-state'
   import {
     resolveAssignLeadControlState,
     resolveClaimSelfControlState,
     resolveReassignLeadControlState,
+    resolveStatusTransitionControlState,
     shouldShowSupportActionRequestState
   } from '../action-request'
 
@@ -43,6 +53,7 @@
   export let requestClaimSelf: () => Promise<void>
   export let requestAssignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
   export let requestReassignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
+  export let requestTransitionStatus: (status: Ref<IssueStatus>) => Promise<void>
 
   $: actionIssue = { ...issue, assignee }
   $: chrome = resolveTakeoverChromeState(actionIssue, projection)
@@ -68,6 +79,18 @@
     submitting
   )
   $: assigneeChange = assignLead.visible ? assignLead : reassignLead
+  $: statusTransition = resolveStatusTransitionControlState(
+    actionIssue,
+    chrome,
+    actionRequest,
+    currentEmployee,
+    canManageSupportActions,
+    submitting
+  )
+  $: statusItems = [
+    { id: 'ndax:status:support:WaitingOnCustomer', label: customerSuccess.string.WaitingOnCustomer },
+    { id: 'ndax:status:support:WaitingOnInternal', label: customerSuccess.string.WaitingOnInternal }
+  ] satisfies DropdownIntlItem[]
 
   function stageLabel (stage: LiveSessionStage): IntlString {
     switch (stage) {
@@ -115,6 +138,25 @@
   }
 
   function requestLabel (): IntlString | undefined {
+    if (requestAction() === 'transition_status') {
+      if (submissionFailed) return customerSuccess.string.StatusRequestFailed
+      if (statusTransition.reconciled) return customerSuccess.string.StatusRequestConfirmed
+      if (statusTransition.awaitingReconciliation) return customerSuccess.string.StatusRequestAwaitingReconciliation
+      switch (statusTransition.requestState) {
+        case 'pending':
+          return customerSuccess.string.StatusRequestPending
+        case 'processing':
+          return customerSuccess.string.StatusRequestProcessing
+        case 'failed':
+          return customerSuccess.string.StatusRequestFailed
+        case 'superseded':
+          return customerSuccess.string.StatusRequestSuperseded
+        case 'succeeded':
+          return customerSuccess.string.StatusRequestAwaitingReconciliation
+        default:
+          return undefined
+      }
+    }
     if (requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') {
       if (submissionFailed) return customerSuccess.string.AssignLeadRequestFailed
       if (assigneeChange.reconciled) {
@@ -160,6 +202,24 @@
   }
 
   function requestLabelType (): StateType {
+    if (requestAction() === 'transition_status') {
+      if (submissionFailed) return StateType.Negative
+      if (statusTransition.reconciled) return StateType.Positive
+      if (statusTransition.awaitingReconciliation) return StateType.Ghost
+      switch (statusTransition.requestState) {
+        case 'pending':
+        case 'processing':
+          return StateType.Primary
+        case 'failed':
+          return StateType.Negative
+        case 'superseded':
+          return StateType.Regular
+        case 'succeeded':
+          return StateType.Ghost
+        default:
+          return StateType.Regular
+      }
+    }
     if (requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') {
       if (assigneeChange.reconciled) return StateType.Positive
       if (assigneeChange.awaitingReconciliation) return StateType.Ghost
@@ -197,6 +257,7 @@
   }
 
   function requestTitleLabel (): IntlString {
+    if (requestAction() === 'transition_status') return customerSuccess.string.StatusRequest
     if (requestAction() === 'reassign_assignee') return customerSuccess.string.ReassignLead
     if (requestAction() === 'assign_assignee') return customerSuccess.string.AssignLeadRequest
     return customerSuccess.string.ClaimRequest
@@ -225,9 +286,14 @@
       void requestReassignLead(event.detail)
     }
   }
+
+  function handleStatusSelected (event: CustomEvent<string | number>): void {
+    if (!statusTransition.canSubmit || typeof event.detail !== 'string') return
+    void requestTransitionStatus(event.detail as Ref<IssueStatus>)
+  }
 </script>
 
-{#if chrome.stage !== 'other' || claimSelf.visible || assigneeChange.visible || shouldShowRequestLabel()}
+{#if chrome.stage !== 'other' || claimSelf.visible || assigneeChange.visible || statusTransition.visible || shouldShowRequestLabel()}
   <section class="takeover-state" aria-labelledby="customer-success-takeover-state-heading">
     <div class="takeover-heading">
       <div class="heading-summary">
@@ -286,6 +352,25 @@
               showNavigate={false}
               justify="left"
               on:change={handleAssignLeadChange}
+            />
+          </div>
+        {/if}
+        {#if statusTransition.visible}
+          <div
+            role="group"
+            aria-describedby={requestAction() === 'transition_status' && requestLabel() !== undefined
+              ? 'customer-success-status-request-state'
+              : undefined}
+          >
+            <ButtonMenu
+              id="customer-success-status-actions"
+              size="small"
+              label={customerSuccess.string.StatusActions}
+              items={statusItems}
+              noSelection
+              disabled={!statusTransition.canSubmit}
+              loading={statusTransition.busy}
+              on:selected={handleStatusSelected}
             />
           </div>
         {/if}
@@ -357,9 +442,11 @@
           <dt><Label label={requestTitleLabel()} /></dt>
           <dd
             class="state-tag"
-            id={requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee'
-              ? 'customer-success-assign-lead-status'
-              : undefined}
+            id={requestAction() === 'transition_status'
+              ? 'customer-success-status-request-state'
+              : requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee'
+                ? 'customer-success-assign-lead-status'
+                : undefined}
           >
             <StateTag label={requestLabelOrFallback()} type={requestLabelType()} />
           </dd>

@@ -22,15 +22,18 @@ import {
   isSupportLeadRoleMember,
   resolveAssignLeadControlState,
   resolveReassignLeadControlState,
+  resolveStatusTransitionControlState,
   resolveSupportActionRoleAssignments,
   isSupportActionRoleMember,
   resolveClaimSelfControlState,
   selectHydratedSupportActionRequestId,
   submitAssignAssigneeSupportActionRequest,
   submitReassignAssigneeSupportActionRequest,
+  submitTransitionStatusSupportActionRequest,
   shouldReleaseActiveSupportActionRequest,
   shouldShowSupportActionRequestState,
-  submitClaimSelfSupportActionRequest
+  submitClaimSelfSupportActionRequest,
+  transitionStatusSupportActionRequestId
 } from '../action-request'
 import { resolveTakeoverChromeState } from '../takeover-state'
 
@@ -487,6 +490,8 @@ describe('Customer Success support action request helpers', () => {
     expect(shouldShowSupportActionRequestState('assign_assignee', true, true, false)).toBe(false)
     expect(shouldShowSupportActionRequestState('assign_assignee', false, true, true)).toBe(false)
     expect(shouldShowSupportActionRequestState('reassign_assignee', true, true, true)).toBe(true)
+    expect(shouldShowSupportActionRequestState('transition_status', true, true, false)).toBe(true)
+    expect(shouldShowSupportActionRequestState('transition_status', true, false, true)).toBe(false)
     expect(shouldShowSupportActionRequestState(undefined, true, true, true)).toBe(false)
   })
 
@@ -512,5 +517,94 @@ describe('Customer Success support action request helpers', () => {
         )
       ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
     }
+  })
+
+  it('creates a deterministic status request with an unchanged owner snapshot', async () => {
+    const notMatch = jest.fn().mockReturnThis()
+    const createDoc = jest.fn().mockResolvedValue('request-id')
+    const commit = jest.fn().mockResolvedValue({ result: true, time: 3, serverTime: 2 })
+    const apply = jest.fn().mockReturnValue({ notMatch, createDoc, commit })
+    const target = 'ndax:status:support:WaitingOnCustomer' as Ref<IssueStatus>
+
+    const result = await submitTransitionStatusSupportActionRequest(
+      { apply } as any,
+      'ndax:support:projection:internal' as Ref<ConversationProjectionSpace>,
+      issue('ndax:status:support:HumanActive', 'person-1' as Ref<Person>),
+      'account-1' as AccountUuid,
+      'person-1' as Ref<Person>,
+      target
+    )
+
+    expect(result.requestId).toBe(
+      transitionStatusSupportActionRequestId('issue-1' as Ref<Issue>, 'account-1' as AccountUuid, target, 100)
+    )
+    expect(createDoc).toHaveBeenCalledWith(
+      customerSuccess.class.SupportActionRequest,
+      'ndax:support:projection:internal',
+      expect.objectContaining({
+        action: 'transition_status',
+        requestedAssignee: 'person-1',
+        requestedStatus: target,
+        expectedStatus: 'ndax:status:support:HumanActive',
+        expectedAssignee: 'person-1'
+      }),
+      result.requestId
+    )
+  })
+
+  it('shows status controls only to the confirmed current owner on Human Active', () => {
+    const target = issue('ndax:status:support:HumanActive', 'person-1' as Ref<Person>)
+    const confirmed = { ...resolveTakeoverChromeState(target), confirmed: true }
+    expect(
+      resolveStatusTransitionControlState(target, confirmed, undefined, 'person-1' as Ref<Person>, true, false)
+    ).toEqual(expect.objectContaining({ visible: true, canSubmit: true }))
+    expect(
+      resolveStatusTransitionControlState(target, confirmed, undefined, 'person-2' as Ref<Person>, true, false)
+    ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+    expect(
+      resolveStatusTransitionControlState(
+        target,
+        { ...confirmed, confirmed: false },
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+    expect(
+      resolveStatusTransitionControlState(
+        issue('ndax:status:support:WaitingOnInternal', 'person-1' as Ref<Person>),
+        confirmed,
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+  })
+
+  it('does not reconcile or rehydrate a status request after the owner changes', () => {
+    const request = actionRequest({
+      action: 'transition_status',
+      requestedAssignee: 'person-1' as Ref<Person>,
+      requestedStatus: 'ndax:status:support:WaitingOnCustomer' as Ref<IssueStatus>,
+      expectedStatus: 'ndax:status:support:HumanActive' as Ref<IssueStatus>,
+      expectedAssignee: 'person-1' as Ref<Person>,
+      state: 'succeeded'
+    })
+    const changedOwner = issue(
+      'ndax:status:support:WaitingOnCustomer',
+      'person-2' as Ref<Person>,
+      101
+    )
+    expect(selectHydratedSupportActionRequestId([request], changedOwner)).toBeUndefined()
+    expect(resolveStatusTransitionControlState(
+      changedOwner,
+      { ...resolveTakeoverChromeState(changedOwner), confirmed: false },
+      request,
+      'person-2' as Ref<Person>,
+      true,
+      false
+    )).toEqual(expect.objectContaining({ reconciled: false }))
   })
 })

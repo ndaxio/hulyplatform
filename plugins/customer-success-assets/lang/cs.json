@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Čeká na sladění tiketu",
     "AssignLeadRequestFailed": "Žádost o přiřazení selhala",
     "AssignLeadRequestSuperseded": "Žádost o přiřazení byla nahrazena",
-    "AssignLeadConfirmed": "Přiřazení potvrzeno"
+    "AssignLeadConfirmed": "Přiřazení potvrzeno",
+    "StatusActions": "Akce stavu",
+    "WaitingOnCustomer": "Čeká se na zákazníka",
+    "WaitingOnInternal": "Čeká se interně",
+    "StatusRequest": "Požadavek na změnu stavu",
+    "StatusRequestPending": "Změna stavu čeká",
+    "StatusRequestProcessing": "Změna stavu se zpracovává",
+    "StatusRequestAwaitingReconciliation": "Čeká se na synchronizaci stavu",
+    "StatusRequestFailed": "Změna stavu selhala",
+    "StatusRequestSuperseded": "Změna stavu byla nahrazena",
+    "StatusRequestConfirmed": "Změna stavu potvrzena"
   }
 }

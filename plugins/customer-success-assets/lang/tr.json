@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "Kayıt mutabakatı bekleniyor",
     "AssignLeadRequestFailed": "Atama isteği başarısız oldu",
     "AssignLeadRequestSuperseded": "Atama isteği değiştirildi",
-    "AssignLeadConfirmed": "Atama onaylandı"
+    "AssignLeadConfirmed": "Atama onaylandı",
+    "StatusActions": "Durum işlemleri",
+    "WaitingOnCustomer": "Müşteri bekleniyor",
+    "WaitingOnInternal": "Dahili yanıt bekleniyor",
+    "StatusRequest": "Durum değişikliği isteği",
+    "StatusRequestPending": "Durum değişikliği bekliyor",
+    "StatusRequestProcessing": "Durum değişikliği işleniyor",
+    "StatusRequestAwaitingReconciliation": "Durum eşitlemesi bekleniyor",
+    "StatusRequestFailed": "Durum değişikliği başarısız",
+    "StatusRequestSuperseded": "Durum değişikliği geçersiz kaldı",
+    "StatusRequestConfirmed": "Durum değişikliği onaylandı"
   }
 }

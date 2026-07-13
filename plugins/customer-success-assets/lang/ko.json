@@ -70,6 +70,16 @@
     "AssignLeadRequestAwaitingReconciliation": "이슈 조정 대기 중",
     "AssignLeadRequestFailed": "지정 요청 실패",
     "AssignLeadRequestSuperseded": "지정 요청 대체됨",
-    "AssignLeadConfirmed": "지정 완료"
+    "AssignLeadConfirmed": "지정 완료",
+    "StatusActions": "상태 작업",
+    "WaitingOnCustomer": "고객 응답 대기",
+    "WaitingOnInternal": "내부 응답 대기",
+    "StatusRequest": "상태 변경 요청",
+    "StatusRequestPending": "상태 변경 대기 중",
+    "StatusRequestProcessing": "상태 변경 처리 중",
+    "StatusRequestAwaitingReconciliation": "상태 동기화 대기 중",
+    "StatusRequestFailed": "상태 변경 실패",
+    "StatusRequestSuperseded": "상태 변경이 대체됨",
+    "StatusRequestConfirmed": "상태 변경 확인됨"
   }
 }
