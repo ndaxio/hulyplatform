@@ -117,6 +117,14 @@ CSSC-15C adds an owner-only nonterminal status id:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:transition_status:<requestedStatus>:<expectedModifiedOn>`
 
+CSSC-15D reserves distinct terminal lifecycle ids:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:<resolve_case|reopen_case>:<requestedStatus>:<reasonCode>:<expectedModifiedOn>`
+
+Their source/target matrix, reason allowlists, role rules, recovery marker, and
+orchestrator behavior are normative in `TERMINAL-LIFECYCLE-CONTRACT.md`.
+Closed and Escalated have no schema-v1 browser transition.
+
 The browser creates it through `client.apply(requestId).notMatch(...)` guarded
 by the globally unique exact `_id`. Its reactive read subscription additionally
 requires the exact internal `space`, `issueId`, and `schemaVersion: 1`.
@@ -125,18 +133,24 @@ On refresh, request discovery is scoped to the current account encoded in
 selection is followed by an exact-id subscription. Succeeded rows hydrate only
 while their requested outcome still matches issue truth; stale terminal
 conflict evidence remains visible without blocking a newer-snapshot action.
+After the browser submits a new exact id, it keeps the optimistic lock until
+that exact row is observed or a bounded observation timeout/errors ends the
+attempt. An empty first subscription result is not success and must not unlock
+duplicate submits.
 
 | Field | Contract |
 |---|---|
 | `_id` | Deterministic id built from issue id, current account uuid, action, expected target person when the action needs one, and expected modified time. |
 | `space` | Exact internal projection space. |
 | `issueId` | Exact Huly support issue reference. |
-| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, or `transition_status`. |
-| `requestedAssignee` | Huly Person the creator is requesting for claim/ack. |
-| `requestedStatus` | Required only for `transition_status`; one of the fixed schema-v1 waiting targets. |
+| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, `transition_status`, `resolve_case`, or `reopen_case`. |
+| `requestedAssignee` | Huly Person requested for claim/assignment actions; for status and terminal actions, the unchanged canonical assignee bound to the request snapshot. |
+| `requestedStatus` | Required for `transition_status`, `resolve_case`, and `reopen_case`; waiting targets for `transition_status`, `Resolved` or `Reopened` for terminal actions. |
 | `expectedStatus` | Exact issue status the request expects. |
 | `expectedAssignee` | Exact expected assignee, or null. |
 | `expectedModifiedOn` | Exact issue `modifiedOn` timestamp the browser observed. |
+| `reasonCode` | Required controlled lifecycle reason for `resolve_case` and `reopen_case`; absent for other actions. |
+| `reasonDetail` | Optional trimmed plain text for terminal actions only. Reject C0/C1 controls except normalized LF, bidi overrides/isolates, and Unicode line/paragraph separators. |
 | `state` | `pending`, `processing`, `succeeded`, `failed`, or `superseded`. |
 | `resultCode` / `errorCode` | Optional system-written outcome codes. |
 | `processingLeaseId` | Opaque adapter-written ownership token. Browser clients must not set or trust it. |
@@ -204,6 +218,17 @@ forbids, to every human role in the space type.
   Human Active to Waiting on Customer or Waiting on Internal. Escalated,
   terminal, reopen, reverse, bot-ownership, and takeover transitions are not
   accepted by this action.
+- for `resolve_case`, Human Active requires a current acknowledged live-session
+  projection. Waiting on Customer and Waiting on Internal require a fresh
+  issue-bound projection whose source status, observed time, and projected
+  owner still reconcile with the exact current issue snapshot. Missing, stale,
+  wrong-source, or wrong-owner projection evidence disables submit and fails
+  closed at adapter validation.
+- for `reopen_case`, only a SupportLead may act and the existing assignee must
+  still be active in the internal support roster. The portal may preserve and
+  hydrate reason/detail drafts from a failed or superseded request, but a fresh
+  deterministic retry still requires either a new snapshot or a changed reason
+  code so the exact id changes.
 
 The portal canonicalizes a legacy account/social-identity `Issue.assignee`
 through Huly's account-to-employee map before comparing it with the

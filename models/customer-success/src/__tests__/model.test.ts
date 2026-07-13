@@ -110,6 +110,11 @@ describe('Customer Success application model', () => {
     expect(modelSource).toMatch(/class TConversationBinding[\s\S]*?conversationId!: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedAssignee!: Ref<Person>/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedStatus\?: Ref<IssueStatus>/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?reasonCode\?: SupportActionRequest\['reasonCode'\]/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?reasonDetail\?: string/)
+    expect(
+      readFileSync(join(__dirname, '..', '..', '..', '..', 'plugins', 'customer-success', 'src', 'index.ts'), 'utf8')
+    ).toMatch(/SupportActionRequestAction =[\s\S]*?'resolve_case'[\s\S]*?'reopen_case'/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseId\?: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseExpiresAt\?: Timestamp/)
     expect(modelSource).toMatch(/class TLiveSessionState[\s\S]*?conversationId\?: string/)

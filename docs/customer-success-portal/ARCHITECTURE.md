@@ -236,6 +236,28 @@ is excluded because a regulated specialist handoff requires destination,
 reason, and handoff evidence rather than a bare status; terminal and reopen
 behavior remains CSSC-15D.
 
+CSSC-15D follows the conservative state machine in
+`TERMINAL-LIFECYCLE-CONTRACT.md`. The current assigned support-role holder may
+resolve Human Active, Waiting on Customer, or Waiting on Internal after an
+explicit confirmation and controlled reason. Only an internal-roster
+SupportLead may reopen Resolved, and the existing eligible assignee is
+preserved. Closed remains system/retention-only, while Escalated keeps its
+separate regulated handoff policy. Terminal and reopen requests are distinct
+from `transition_status`; browser clients still create immutable intent and
+never write the Issue directly.
+
+Waiting on Customer and Waiting on Internal additionally require a fresh
+issue-bound live-session projection whose source status, projected owner, and
+observation time still reconcile with the authoritative issue snapshot. The
+button may remain present for context, but submit stays disabled and the dialog
+surfaces stale proof rather than inventing success.
+
+The controls remain hidden until the adapter and orchestrator prerequisites in
+the lifecycle contract are present: support tickets cannot use the generic
+status route, lifecycle projections are monotonic, bot mirroring cannot erase a
+terminal/reopened status, and Reopened has deterministic human-owned bot
+suppression independent of stale local session state.
+
 `SupportActionRequest.state` is advisory workflow state, not takeover truth.
 Pending, processing, failed, and superseded may be rendered reactively. Even
 `state: succeeded` means only that adapter-side processing completed; takeover
@@ -244,6 +266,12 @@ authoritative `Issue.status`. For `assign_assignee` and `reassign_assignee`, `st
 means only that processing completed; the portal treats success as pending until
 the reactive `Issue` snapshot shows the requested assignee on the current or a
 newer `modifiedOn`.
+
+For terminal requests, failed/superseded rows remain actionable UX evidence:
+the portal preserves reason/detail in memory, hydrates them from the observed
+row after refresh, keeps the optimistic lock until the exact row is observed or
+timed out, and distinguishes stale snapshot/projection proof from a
+deterministic-id conflict on the current snapshot.
 
 ## Registration Surface
 

@@ -68,8 +68,14 @@ export interface ConversationBinding extends Doc {
   schemaVersion: number
 }
 
-export type SupportActionRequestAction = 'claim_self' | 'assign_assignee' | 'reassign_assignee' | 'transition_status'
+export type SupportActionRequestAction =
+  'claim_self' | 'assign_assignee' | 'reassign_assignee' | 'transition_status' | 'resolve_case' | 'reopen_case'
 export type SupportActionRequestState = 'pending' | 'processing' | 'succeeded' | 'failed' | 'superseded'
+export type SupportResolveReasonCode =
+  'customer_confirmed' | 'request_completed' | 'information_provided' | 'duplicate_request'
+export type SupportReopenReasonCode =
+  'customer_follow_up' | 'incomplete_resolution' | 'new_information' | 'quality_review'
+export type SupportLifecycleReasonCode = SupportResolveReasonCode | SupportReopenReasonCode
 
 /** Human-created, system-consumed support action request in the internal projection space. */
 export interface SupportActionRequest extends Doc {
@@ -80,6 +86,8 @@ export interface SupportActionRequest extends Doc {
   expectedStatus: Ref<IssueStatus>
   expectedAssignee: Ref<Person> | null
   expectedModifiedOn: Timestamp
+  reasonCode?: SupportLifecycleReasonCode
+  reasonDetail?: string
   state: SupportActionRequestState
   resultCode?: string
   errorCode?: string
@@ -249,7 +257,35 @@ const customerSuccess = plugin(customerSuccessId, {
     StatusRequestAwaitingReconciliation: '' as IntlString,
     StatusRequestFailed: '' as IntlString,
     StatusRequestSuperseded: '' as IntlString,
-    StatusRequestConfirmed: '' as IntlString
+    StatusRequestConfirmed: '' as IntlString,
+    ResolveCase: '' as IntlString,
+    ReopenCase: '' as IntlString,
+    ResolveCaseTitle: '' as IntlString,
+    ReopenCaseTitle: '' as IntlString,
+    TerminalActionReason: '' as IntlString,
+    TerminalActionReasonPlaceholder: '' as IntlString,
+    TerminalActionDetail: '' as IntlString,
+    TerminalActionDetailLimit: '' as IntlString,
+    TerminalActionStale: '' as IntlString,
+    TerminalActionConflict: '' as IntlString,
+    ConfirmResolveCase: '' as IntlString,
+    ConfirmReopenCase: '' as IntlString,
+    CancelTerminalAction: '' as IntlString,
+    CustomerConfirmedReason: '' as IntlString,
+    RequestCompletedReason: '' as IntlString,
+    InformationProvidedReason: '' as IntlString,
+    DuplicateRequestReason: '' as IntlString,
+    CustomerFollowUpReason: '' as IntlString,
+    IncompleteResolutionReason: '' as IntlString,
+    NewInformationReason: '' as IntlString,
+    QualityReviewReason: '' as IntlString,
+    TerminalRequest: '' as IntlString,
+    TerminalRequestPending: '' as IntlString,
+    TerminalRequestProcessing: '' as IntlString,
+    TerminalRequestAwaitingReconciliation: '' as IntlString,
+    TerminalRequestFailed: '' as IntlString,
+    TerminalRequestSuperseded: '' as IntlString,
+    TerminalRequestConfirmed: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>

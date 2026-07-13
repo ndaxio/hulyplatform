@@ -6,12 +6,13 @@
 <script lang="ts">
   import activity, { type ActivityMessage } from '@hcengineering/activity'
   import { getCurrentEmployee, type Employee, type Person } from '@hcengineering/contact'
-  import { employeeRefByAccountUuidStore } from '@hcengineering/contact-resources'
+  import { employeeByIdStore, employeeRefByAccountUuidStore } from '@hcengineering/contact-resources'
   import type { AssigneeCategory } from '@hcengineering/contact-resources/src/assignee'
   import customerSuccess, {
     type ConversationEvent,
     type ConversationProjectionSpace,
     type LiveSessionState,
+    type SupportLifecycleReasonCode,
     type SupportActionRequest
   } from '@hcengineering/customer-success'
   import core, {
@@ -41,6 +42,7 @@
     SectionEmpty,
     deviceOptionsStore as deviceInfo
   } from '@hcengineering/ui'
+  import { onDestroy } from 'svelte'
 
   import {
     buildConversationHistoryQuery,
@@ -66,12 +68,15 @@
     selectHydratedSupportActionRequestId,
     resolveSupportActionRoleAssignments,
     claimSelfSupportActionRequestId,
+    isLiveSessionConfirmed,
     shouldReleaseActiveSupportActionRequest,
     submitAssignAssigneeSupportActionRequest,
     submitClaimSelfSupportActionRequest,
     submitReassignAssigneeSupportActionRequest,
+    submitTerminalSupportActionRequest,
     submitTransitionStatusSupportActionRequest
   } from '../action-request'
+  import type { TerminalAction } from '../action-request'
   import { buildLiveSessionStateQuery, resolveTakeoverChromeState } from '../takeover-state'
   import TakeoverStateChrome from './TakeoverStateChrome.svelte'
 
@@ -105,6 +110,7 @@
   const currentAccount = getCurrentAccount()
   const currentEmployee = getCurrentEmployee()
   const hierarchy = client.getHierarchy()
+  const supportActionRequestObservationTimeoutMs = 8000
 
   let state: DetailState = 'loading'
   let issue: Issue | undefined
@@ -141,6 +147,7 @@
   let mobileLane: 'conversation' | 'activity' = 'conversation'
   let canManageSupportActions = false
   let canAssignLead = false
+  let assigneeInActiveRoster = false
   let trackedInternalProjectionSpaceId: Ref<ConversationProjectionSpace> | undefined
   let trackedSupportActionRequestId: Ref<SupportActionRequest> | undefined
   let trackedSupportActionRequestHydrationKey: string | undefined
@@ -159,6 +166,7 @@
   let assignLeadCandidates: Array<Ref<Person>> = []
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
+  let supportActionRequestObservationTimeout: ReturnType<typeof setTimeout> | undefined
 
   function uniquePersons (
     accounts: AccountUuid[],
@@ -196,6 +204,25 @@
     supportActionRequest = undefined
     supportActionRequestQuery.unsubscribe()
     supportActionRequestHydrationQuery.unsubscribe()
+    clearSupportActionRequestObservationTimeout()
+  }
+
+  function clearSupportActionRequestObservationTimeout (): void {
+    if (supportActionRequestObservationTimeout !== undefined) {
+      clearTimeout(supportActionRequestObservationTimeout)
+      supportActionRequestObservationTimeout = undefined
+    }
+  }
+
+  function armSupportActionRequestObservationTimeout (requestId: Ref<SupportActionRequest>): void {
+    clearSupportActionRequestObservationTimeout()
+    supportActionRequestObservationTimeout = setTimeout(() => {
+      if (activeSupportActionRequestId !== requestId || trackedSupportActionRequestId !== requestId || !actionSubmitting) {
+        return
+      }
+      actionSubmitting = false
+      actionSubmissionFailed = true
+    }, supportActionRequestObservationTimeoutMs)
   }
 
   function watchIssue (identifier: string, supportProjectId: Ref<Project>): void {
@@ -283,7 +310,14 @@
       buildSupportActionRequestQuery(projectionSpaceIds.internal, requestId, target._id),
       (result) => {
         if (issue?._id !== target._id || trackedSupportActionRequestId !== requestId) return
-        supportActionRequest = result[0]
+        const observed = result[0]
+        if (observed === undefined) {
+          if (activeSupportActionRequestId === requestId && actionSubmitting) return
+          supportActionRequest = undefined
+          return
+        }
+        supportActionRequest = observed
+        clearSupportActionRequestObservationTimeout()
         actionSubmitting = false
         actionSubmissionFailed = false
       },
@@ -497,10 +531,14 @@
       activeSupportActionRequestId = requestId
       trackedSupportActionRequestId = undefined
       if (!committed.result) {
+        clearSupportActionRequestObservationTimeout()
         actionSubmitting = false
         supportActionRequestQuery.refreshClient()
+      } else {
+        armSupportActionRequestObservationTimeout(requestId)
       }
     } catch {
+      clearSupportActionRequestObservationTimeout()
       actionSubmitting = false
       actionSubmissionFailed = true
     }
@@ -532,10 +570,14 @@
       activeSupportActionRequestId = requestId
       trackedSupportActionRequestId = undefined
       if (!committed.result) {
+        clearSupportActionRequestObservationTimeout()
         actionSubmitting = false
         supportActionRequestQuery.refreshClient()
+      } else {
+        armSupportActionRequestObservationTimeout(requestId)
       }
     } catch {
+      clearSupportActionRequestObservationTimeout()
       actionSubmitting = false
       actionSubmissionFailed = true
     }
@@ -568,10 +610,14 @@
       activeSupportActionRequestId = requestId
       trackedSupportActionRequestId = undefined
       if (!committed.result) {
+        clearSupportActionRequestObservationTimeout()
         actionSubmitting = false
         supportActionRequestQuery.refreshClient()
+      } else {
+        armSupportActionRequestObservationTimeout(requestId)
       }
     } catch {
+      clearSupportActionRequestObservationTimeout()
       actionSubmitting = false
       actionSubmissionFailed = true
     }
@@ -603,12 +649,79 @@
       activeSupportActionRequestId = requestId
       trackedSupportActionRequestId = undefined
       if (!committed.result) {
+        clearSupportActionRequestObservationTimeout()
         actionSubmitting = false
         supportActionRequestQuery.refreshClient()
+      } else {
+        armSupportActionRequestObservationTimeout(requestId)
       }
     } catch {
+      clearSupportActionRequestObservationTimeout()
       actionSubmitting = false
       actionSubmissionFailed = true
+    }
+  }
+
+  async function requestTerminalAction (
+    snapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
+    action: TerminalAction,
+    targetStatus: Ref<IssueStatus>,
+    reasonCode: SupportLifecycleReasonCode,
+    reasonDetail: string
+  ): Promise<boolean> {
+    lastSubmittedAction = action
+    if (
+      issue === undefined ||
+      issue._id !== snapshot._id ||
+      issue.status !== snapshot.status ||
+      canonicalIssueAssignee !== snapshot.assignee ||
+      issue.modifiedOn !== snapshot.modifiedOn ||
+      actionSubmitting
+    ) {
+      actionSubmissionFailed = true
+      return false
+    }
+
+    actionSubmitting = true
+    actionSubmissionFailed = false
+    try {
+      const actionIssue = { ...snapshot, assignee: canonicalIssueAssignee }
+      const currentTakeover = resolveTakeoverChromeState(actionIssue, liveSessionState)
+      const { requestId, committed } = await submitTerminalSupportActionRequest(
+        client,
+        projectionSpaceIds.internal,
+        actionIssue,
+        currentAccount.uuid,
+        currentEmployee,
+        action,
+        targetStatus,
+        reasonCode,
+        reasonDetail,
+        {
+          canManageSupportActions,
+          canReopenCase: canAssignLead,
+          assigneeInActiveRoster,
+          liveSessionConfirmed: isLiveSessionConfirmed(currentTakeover, liveSessionState),
+          hasCurrentProjectionProof: currentTakeover.projectionCurrent,
+          projectionOwnerMatchesAssignee: currentTakeover.claimOwner === actionIssue.assignee
+        }
+      )
+      activeSupportActionRequestId = requestId
+      trackedSupportActionRequestId = undefined
+      if (!committed.result) {
+        clearSupportActionRequestObservationTimeout()
+        actionSubmitting = false
+        actionSubmissionFailed = true
+        supportActionRequestQuery.refreshClient()
+        return false
+      }
+      armSupportActionRequestObservationTimeout(requestId)
+      return true
+    } catch {
+      clearSupportActionRequestObservationTimeout()
+      actionSubmitting = false
+      actionSubmissionFailed = true
+      return false
     }
   }
 
@@ -635,6 +748,10 @@
         .length > 0
   )
   $: assignLeadCandidates = Array.from(new Set([...assignLeadLeadCandidates, ...assignLeadAgentCandidates]))
+  $: assigneeInActiveRoster =
+    canonicalIssueAssignee !== null &&
+    assignLeadCandidates.includes(canonicalIssueAssignee) &&
+    $employeeByIdStore.get(canonicalIssueAssignee as Ref<Employee>)?.active === true
   $: assignLeadCandidateQuery = buildAssignLeadCandidateQuery(assignLeadCandidates)
   $: if (issue === undefined) {
     canonicalIssueAssignee = null
@@ -697,6 +814,10 @@
     hydratedSupportActionRequestId = undefined
     supportActionRequestHydrationQuery.unsubscribe()
   }
+
+  onDestroy(() => {
+    clearSupportActionRequestObservationTimeout()
+  })
 </script>
 
 <div class="detail-shell">
@@ -749,6 +870,7 @@
       {currentEmployee}
       {canManageSupportActions}
       {canAssignLead}
+      {assigneeInActiveRoster}
       submitting={actionSubmitting}
       submissionFailed={actionSubmissionFailed}
       {lastSubmittedAction}
@@ -759,6 +881,7 @@
       {requestAssignLead}
       {requestReassignLead}
       {requestTransitionStatus}
+      {requestTerminalAction}
     />
 
     {#if $deviceInfo.isMobile}

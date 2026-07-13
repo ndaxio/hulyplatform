@@ -12,6 +12,7 @@ const detailSource = readFileSync(join(componentDir, 'ConversationDetail.svelte'
 const presenterSource = readFileSync(join(componentDir, 'TicketPresenter.svelte'), 'utf8')
 const inboxSource = readFileSync(join(componentDir, 'LiveInbox.svelte'), 'utf8')
 const takeoverSource = readFileSync(join(componentDir, 'TakeoverStateChrome.svelte'), 'utf8')
+const terminalDialogSource = readFileSync(join(componentDir, 'TerminalActionDialog.svelte'), 'utf8')
 
 describe('conversation detail UI security contract', () => {
   it('uses project-scoped read-only queries and separates transcript from activity', () => {
@@ -101,6 +102,43 @@ describe('conversation detail UI security contract', () => {
     expect(detailSource).toContain('buildAssignLeadCandidateQuery(assignLeadCandidates)')
     expect(takeoverSource).not.toContain("actionRequest.state === 'succeeded' && chrome.confirmed")
     expect(takeoverSource).not.toContain('acknowledgeSupportTicketTakeover')
+  })
+
+  it('uses a native accessible confirmation dialog with memory-only controlled reasons', () => {
+    expect(takeoverSource).toContain("import TerminalActionDialog from './TerminalActionDialog.svelte'")
+    expect(takeoverSource).toContain('resolveTerminalActionControlState(')
+    expect(takeoverSource).toContain('<TerminalActionDialog')
+    expect(takeoverSource).toContain('terminalDialogSnapshot = {')
+    expect(takeoverSource).toContain('bind:reasonCode={terminalDraftReasonCode}')
+    expect(takeoverSource).toContain('stale={terminalDialogStale()}')
+    expect(takeoverSource).toContain('conflict={terminalDialogConflict()}')
+    expect(detailSource).toContain('issue.modifiedOn !== snapshot.modifiedOn')
+    expect(detailSource).toContain('canonicalIssueAssignee !== snapshot.assignee')
+    expect(detailSource).toContain('supportActionRequestObservationTimeoutMs = 8000')
+    expect(detailSource).toContain('armSupportActionRequestObservationTimeout(requestId)')
+    expect(detailSource).toContain('if (activeSupportActionRequestId === requestId && actionSubmitting) return')
+    expect(detailSource).toMatch(
+      /if \(!committed\.result\) \{[\s\S]*?actionSubmissionFailed = true[\s\S]*?return false/
+    )
+    expect(detailSource).toContain('$employeeByIdStore.get(canonicalIssueAssignee as Ref<Employee>)?.active === true')
+    expect(terminalDialogSource).toContain('<dialog')
+    expect(terminalDialogSource).toContain('dialog.showModal()')
+    expect(terminalDialogSource).toContain('aria-labelledby="customer-success-terminal-dialog-title"')
+    expect(terminalDialogSource).toContain("aria-describedby={statusIds}")
+    expect(terminalDialogSource).toContain('aria-modal="true"')
+    expect(terminalDialogSource).toContain('aria-busy={submitting}')
+    expect(terminalDialogSource).toContain('on:cancel|preventDefault={close}')
+    expect(terminalDialogSource).toContain('on:click={handleBackdropClick}')
+    expect(terminalDialogSource).toContain('type="radio"')
+    expect(terminalDialogSource).toContain('required')
+    expect(terminalDialogSource).toContain('maxlength={terminalReasonDetailMaxLength}')
+    expect(terminalDialogSource).toContain('role={stale || conflict || submissionFailed')
+    expect(terminalDialogSource).toContain('aria-live={stale || conflict || submissionFailed')
+    expect(terminalDialogSource).toContain('previousFocus?.focus()')
+    expect(terminalDialogSource).not.toMatch(/localStorage|sessionStorage|indexedDB/)
+    expect(takeoverSource).not.toContain("id: 'ndax:status:support:Closed'")
+    expect(takeoverSource).not.toContain("id: 'ndax:status:support:Escalated'")
+    expect(takeoverSource).not.toContain('StatusEditor')
   })
 
   it('labels non-public events and never hides authorization behind CSS-only filtering', () => {

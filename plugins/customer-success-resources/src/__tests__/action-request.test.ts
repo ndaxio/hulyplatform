@@ -19,10 +19,12 @@ import {
   canonicalSupportAssignee,
   buildSupportActionRequestQuery,
   claimSelfSupportActionRequestId,
+  isTerminalReasonAllowed,
   isSupportLeadRoleMember,
   resolveAssignLeadControlState,
   resolveReassignLeadControlState,
   resolveStatusTransitionControlState,
+  resolveTerminalActionControlState,
   resolveSupportActionRoleAssignments,
   isSupportActionRoleMember,
   resolveClaimSelfControlState,
@@ -30,10 +32,14 @@ import {
   submitAssignAssigneeSupportActionRequest,
   submitReassignAssigneeSupportActionRequest,
   submitTransitionStatusSupportActionRequest,
+  submitTerminalSupportActionRequest,
   shouldReleaseActiveSupportActionRequest,
   shouldShowSupportActionRequestState,
   submitClaimSelfSupportActionRequest,
-  transitionStatusSupportActionRequestId
+  terminalSupportActionRequestId,
+  transitionStatusSupportActionRequestId,
+  normalizeTerminalReasonDetail,
+  validateTerminalActionIntent
 } from '../action-request'
 import { resolveTakeoverChromeState } from '../takeover-state'
 
@@ -592,19 +598,386 @@ describe('Customer Success support action request helpers', () => {
       expectedAssignee: 'person-1' as Ref<Person>,
       state: 'succeeded'
     })
-    const changedOwner = issue(
-      'ndax:status:support:WaitingOnCustomer',
-      'person-2' as Ref<Person>,
-      101
-    )
+    const changedOwner = issue('ndax:status:support:WaitingOnCustomer', 'person-2' as Ref<Person>, 101)
     expect(selectHydratedSupportActionRequestId([request], changedOwner)).toBeUndefined()
-    expect(resolveStatusTransitionControlState(
-      changedOwner,
-      { ...resolveTakeoverChromeState(changedOwner), confirmed: false },
-      request,
-      'person-2' as Ref<Person>,
-      true,
-      false
-    )).toEqual(expect.objectContaining({ reconciled: false }))
+    expect(
+      resolveStatusTransitionControlState(
+        changedOwner,
+        { ...resolveTakeoverChromeState(changedOwner), confirmed: false },
+        request,
+        'person-2' as Ref<Person>,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ reconciled: false }))
+  })
+
+  it('normalizes terminal detail and builds the full deterministic lifecycle id', () => {
+    expect(normalizeTerminalReasonDetail('  first  \r\nsecond\t \r\n  ')).toBe('first\nsecond')
+    expect(normalizeTerminalReasonDetail('   ')).toBeUndefined()
+    expect(() => normalizeTerminalReasonDetail(`x${String.fromCharCode(0)}y`)).toThrow(
+      'terminal_reason_detail_not_plain_text'
+    )
+    expect(() => normalizeTerminalReasonDetail(`x${String.fromCharCode(9)}y`)).toThrow(
+      'terminal_reason_detail_not_plain_text'
+    )
+    expect(() => normalizeTerminalReasonDetail(`x${String.fromCharCode(0x85)}y`)).toThrow(
+      'terminal_reason_detail_not_plain_text'
+    )
+    expect(() => normalizeTerminalReasonDetail(`x${String.fromCharCode(0x2028)}y`)).toThrow(
+      'terminal_reason_detail_not_plain_text'
+    )
+    expect(() => normalizeTerminalReasonDetail(`x${String.fromCharCode(0x202e)}y`)).toThrow(
+      'terminal_reason_detail_not_plain_text'
+    )
+    expect(() => normalizeTerminalReasonDetail(`x${String.fromCharCode(0x2068)}y`)).toThrow(
+      'terminal_reason_detail_not_plain_text'
+    )
+    expect(() => normalizeTerminalReasonDetail('x'.repeat(501))).toThrow('terminal_reason_detail_too_long')
+    expect(
+      terminalSupportActionRequestId(
+        'issue-1' as Ref<Issue>,
+        'account-1' as AccountUuid,
+        'resolve_case',
+        'ndax:status:support:Resolved' as Ref<IssueStatus>,
+        'request_completed',
+        100
+      )
+    ).toBe(
+      'ndax:support:action-request:issue-1:account-1:resolve_case:ndax:status:support:Resolved:request_completed:100'
+    )
+  })
+
+  it('keeps terminal drafts scoped to the active lifecycle action', () => {
+    expect(isTerminalReasonAllowed('resolve_case', 'customer_confirmed')).toBe(true)
+    expect(isTerminalReasonAllowed('resolve_case', 'customer_follow_up')).toBe(false)
+    expect(isTerminalReasonAllowed('reopen_case', 'customer_follow_up')).toBe(true)
+    expect(isTerminalReasonAllowed('reopen_case', 'customer_confirmed')).toBe(false)
+    expect(isTerminalReasonAllowed('reopen_case', undefined)).toBe(false)
+  })
+
+  it('fails terminal intent locally for invalid role, source, target, reason, owner, and live evidence', () => {
+    const owner = 'person-1' as Ref<Person>
+    const target = issue('ndax:status:support:HumanActive', owner)
+    const allowed = {
+      canManageSupportActions: true,
+      canReopenCase: false,
+      assigneeInActiveRoster: true,
+      liveSessionConfirmed: true,
+      hasCurrentProjectionProof: true,
+      projectionOwnerMatchesAssignee: true
+    }
+    const validateResolve = (authorization = allowed, source = target): void => {
+      validateTerminalActionIntent(
+        source,
+        owner,
+        'resolve_case',
+        'ndax:status:support:Resolved' as Ref<IssueStatus>,
+        'request_completed',
+        authorization
+      )
+    }
+
+    expect(validateResolve).not.toThrow()
+    expect(() => {
+      validateResolve({ ...allowed, canManageSupportActions: false })
+    }).toThrow('terminal_role_not_allowed')
+    expect(() => {
+      validateResolve({ ...allowed, liveSessionConfirmed: false })
+    }).toThrow('terminal_live_session_not_confirmed')
+    expect(() => {
+      validateResolve(allowed, issue('ndax:status:support:Escalated', owner))
+    }).toThrow('terminal_source_not_allowed')
+    expect(() => {
+      validateTerminalActionIntent(
+        target,
+        'person-2' as Ref<Person>,
+        'resolve_case',
+        'ndax:status:support:Resolved' as Ref<IssueStatus>,
+        'request_completed',
+        allowed
+      )
+    }).toThrow('terminal_owner_mismatch')
+    expect(() => {
+      validateTerminalActionIntent(
+        target,
+        owner,
+        'resolve_case',
+        'ndax:status:support:Closed' as Ref<IssueStatus>,
+        'request_completed',
+        allowed
+      )
+    }).toThrow('terminal_target_not_allowed')
+    expect(() => {
+      validateTerminalActionIntent(
+        target,
+        owner,
+        'resolve_case',
+        'ndax:status:support:Resolved' as Ref<IssueStatus>,
+        'quality_review',
+        allowed
+      )
+    }).toThrow('terminal_reason_not_allowed')
+
+    expect(() => {
+      validateTerminalActionIntent(
+        issue('ndax:status:support:WaitingOnCustomer', owner),
+        owner,
+        'resolve_case',
+        'ndax:status:support:Resolved' as Ref<IssueStatus>,
+        'request_completed',
+        { ...allowed, hasCurrentProjectionProof: false }
+      )
+    }).toThrow('terminal_projection_not_current')
+    expect(() => {
+      validateTerminalActionIntent(
+        issue('ndax:status:support:WaitingOnInternal', owner),
+        owner,
+        'resolve_case',
+        'ndax:status:support:Resolved' as Ref<IssueStatus>,
+        'request_completed',
+        { ...allowed, projectionOwnerMatchesAssignee: false }
+      )
+    }).toThrow('terminal_projection_owner_mismatch')
+
+    const reopenAuthorization = { ...allowed, canReopenCase: true }
+    const resolved = issue('ndax:status:support:Resolved', owner)
+    expect(() => {
+      validateTerminalActionIntent(
+        resolved,
+        owner,
+        'reopen_case',
+        'ndax:status:support:Reopened' as Ref<IssueStatus>,
+        'quality_review',
+        reopenAuthorization
+      )
+    }).not.toThrow()
+    expect(() => {
+      validateTerminalActionIntent(
+        resolved,
+        owner,
+        'reopen_case',
+        'ndax:status:support:Reopened' as Ref<IssueStatus>,
+        'request_completed',
+        reopenAuthorization
+      )
+    }).toThrow('terminal_reason_not_allowed')
+    expect(() => {
+      validateTerminalActionIntent(
+        resolved,
+        owner,
+        'reopen_case',
+        'ndax:status:support:Reopened' as Ref<IssueStatus>,
+        'quality_review',
+        { ...reopenAuthorization, assigneeInActiveRoster: false }
+      )
+    }).toThrow('terminal_owner_not_eligible')
+  })
+
+  it('enforces resolve/reopen visibility and active-roster owner preservation', () => {
+    const owner = 'person-1' as Ref<Person>
+    const humanActive = issue('ndax:status:support:HumanActive', owner)
+    expect(
+      resolveTerminalActionControlState(
+        humanActive,
+        { ...resolveTakeoverChromeState(humanActive), confirmed: true },
+        undefined,
+        owner,
+        true,
+        false,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ action: 'resolve_case', visible: true, canSubmit: true }))
+
+    const waitingOnCustomer = issue('ndax:status:support:WaitingOnCustomer', owner)
+    expect(
+      resolveTerminalActionControlState(
+        waitingOnCustomer,
+        {
+          ...resolveTakeoverChromeState(waitingOnCustomer),
+          projectionCurrent: true,
+          claimOwner: owner
+        },
+        undefined,
+        owner,
+        true,
+        false,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ action: 'resolve_case', visible: true, canSubmit: true }))
+    expect(
+      resolveTerminalActionControlState(
+        waitingOnCustomer,
+        resolveTakeoverChromeState(waitingOnCustomer),
+        undefined,
+        owner,
+        true,
+        false,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ action: 'resolve_case', visible: true, canSubmit: false }))
+    expect(
+      resolveTerminalActionControlState(
+        waitingOnCustomer,
+        {
+          ...resolveTakeoverChromeState(waitingOnCustomer),
+          projectionCurrent: true,
+          claimOwner: 'person-2' as Ref<Person>
+        },
+        undefined,
+        owner,
+        true,
+        false,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ action: 'resolve_case', visible: true, canSubmit: false }))
+
+    const resolved = issue('ndax:status:support:Resolved', owner)
+    const chrome = resolveTakeoverChromeState(resolved)
+    expect(resolveTerminalActionControlState(resolved, chrome, undefined, owner, true, true, true, false)).toEqual(
+      expect.objectContaining({ action: 'reopen_case', visible: true, canSubmit: true })
+    )
+    expect(resolveTerminalActionControlState(resolved, chrome, undefined, owner, true, false, true, false)).toEqual(
+      expect.objectContaining({ visible: false, canSubmit: false })
+    )
+    expect(resolveTerminalActionControlState(resolved, chrome, undefined, owner, true, true, false, false)).toEqual(
+      expect.objectContaining({ visible: true, canSubmit: false })
+    )
+    for (const status of [
+      'ndax:status:support:Closed',
+      'ndax:status:support:Escalated',
+      'ndax:status:support:BotActive'
+    ]) {
+      const forbidden = issue(status, owner)
+      expect(
+        resolveTerminalActionControlState(
+          forbidden,
+          resolveTakeoverChromeState(forbidden),
+          undefined,
+          owner,
+          true,
+          true,
+          true,
+          false
+        )
+      ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+    }
+  })
+
+  it('creates immutable terminal intent and reconciles only the exact target and owner', async () => {
+    const notMatch = jest.fn().mockReturnThis()
+    const createDoc = jest.fn().mockResolvedValue('request-id')
+    const commit = jest.fn().mockResolvedValue({ result: true, time: 3, serverTime: 2 })
+    const apply = jest.fn().mockReturnValue({ notMatch, createDoc, commit })
+    const target = issue('ndax:status:support:WaitingOnCustomer', 'person-1' as Ref<Person>)
+    const result = await submitTerminalSupportActionRequest(
+      { apply } as any,
+      'ndax:support:projection:internal' as Ref<ConversationProjectionSpace>,
+      target,
+      'account-1' as AccountUuid,
+      'person-1' as Ref<Person>,
+      'resolve_case',
+      'ndax:status:support:Resolved' as Ref<IssueStatus>,
+      'customer_confirmed',
+      '  Customer replied. \r\n',
+      {
+        canManageSupportActions: true,
+        canReopenCase: false,
+        assigneeInActiveRoster: true,
+        liveSessionConfirmed: false,
+        hasCurrentProjectionProof: true,
+        projectionOwnerMatchesAssignee: true
+      }
+    )
+
+    expect(apply).toHaveBeenCalledWith(result.requestId, 'customer-success-resolve-case')
+    expect(notMatch).toHaveBeenCalledWith(customerSuccess.class.SupportActionRequest, { _id: result.requestId })
+    const request = createDoc.mock.calls[0][2]
+    expect(request).toEqual(
+      expect.objectContaining({
+        action: 'resolve_case',
+        requestedAssignee: 'person-1',
+        requestedStatus: 'ndax:status:support:Resolved',
+        expectedStatus: 'ndax:status:support:WaitingOnCustomer',
+        expectedAssignee: 'person-1',
+        reasonCode: 'customer_confirmed',
+        reasonDetail: 'Customer replied.',
+        state: 'pending',
+        idempotencyKey: result.requestId,
+        schemaVersion: 1
+      })
+    )
+    for (const forbidden of ['actor', 'role', 'approval', 'processedAt', 'commitMarker', 'auditIdentity']) {
+      expect(request).not.toHaveProperty(forbidden)
+    }
+
+    const succeeded = actionRequest({
+      ...request,
+      _id: result.requestId,
+      requestedStatus: 'ndax:status:support:Resolved' as Ref<IssueStatus>,
+      state: 'succeeded'
+    })
+    expect(
+      selectHydratedSupportActionRequestId(
+        [succeeded],
+        issue('ndax:status:support:Resolved', 'person-1' as Ref<Person>, 101)
+      )
+    ).toBe(result.requestId)
+    const reconciledIssue = issue('ndax:status:support:Resolved', 'person-1' as Ref<Person>, 101)
+    expect(
+      resolveTerminalActionControlState(
+        reconciledIssue,
+        resolveTakeoverChromeState(reconciledIssue),
+        succeeded,
+        'person-1' as Ref<Person>,
+        true,
+        false,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ reconciled: true, awaitingReconciliation: false, canSubmit: false }))
+    expect(
+      selectHydratedSupportActionRequestId(
+        [succeeded],
+        issue('ndax:status:support:Resolved', 'person-2' as Ref<Person>, 101)
+      )
+    ).toBeUndefined()
+    expect(
+      selectHydratedSupportActionRequestId(
+        [{ ...succeeded, state: 'failed' }],
+        issue('ndax:status:support:WaitingOnCustomer', 'person-1' as Ref<Person>, 101)
+      )
+    ).toBeUndefined()
+  })
+
+  it('allows terminal retry only after the operator changes reason or the issue snapshot advances', () => {
+    const owner = 'person-1' as Ref<Person>
+    const target = issue('ndax:status:support:WaitingOnCustomer', owner)
+    const failed = actionRequest({
+      action: 'resolve_case',
+      requestedAssignee: owner,
+      requestedStatus: 'ndax:status:support:Resolved' as Ref<IssueStatus>,
+      expectedStatus: target.status,
+      expectedAssignee: owner,
+      reasonCode: 'customer_confirmed',
+      state: 'failed'
+    })
+
+    expect(
+      resolveTerminalActionControlState(
+        target,
+        { ...resolveTakeoverChromeState(target), projectionCurrent: true, claimOwner: owner },
+        failed,
+        owner,
+        true,
+        false,
+        true,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: true, canSubmit: true, requestState: 'failed' }))
   })
 })

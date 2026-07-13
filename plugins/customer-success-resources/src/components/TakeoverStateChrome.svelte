@@ -10,6 +10,7 @@
   import customerSuccess, {
     type LiveSessionState,
     type LiveSessionStage,
+    type SupportLifecycleReasonCode,
     type SupportActionRequest
   } from '@hcengineering/customer-success'
   import { DateRangeMode } from '@hcengineering/core'
@@ -34,8 +35,12 @@
     resolveClaimSelfControlState,
     resolveReassignLeadControlState,
     resolveStatusTransitionControlState,
+    resolveTerminalActionControlState,
+    isTerminalReasonAllowed,
     shouldShowSupportActionRequestState
   } from '../action-request'
+  import type { TerminalAction } from '../action-request'
+  import TerminalActionDialog from './TerminalActionDialog.svelte'
 
   export let issue: Issue
   export let assignee: Ref<Person> | null
@@ -44,6 +49,7 @@
   export let currentEmployee: Person['_id'] | undefined
   export let canManageSupportActions = false
   export let canAssignLead = false
+  export let assigneeInActiveRoster = false
   export let submitting = false
   export let submissionFailed = false
   export let lastSubmittedAction: SupportActionRequest['action'] | undefined = undefined
@@ -54,6 +60,19 @@
   export let requestAssignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
   export let requestReassignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
   export let requestTransitionStatus: (status: Ref<IssueStatus>) => Promise<void>
+  export let requestTerminalAction: (
+    snapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
+    action: TerminalAction,
+    targetStatus: Ref<IssueStatus>,
+    reasonCode: SupportLifecycleReasonCode,
+    reasonDetail: string
+  ) => Promise<boolean>
+
+  let terminalDialogAction: TerminalAction | undefined
+  let terminalDialogSnapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'> | undefined
+  let terminalDraftReasonCode: SupportLifecycleReasonCode | undefined
+  let terminalDraftReasonDetail = ''
+  let hydratedTerminalDraftRequestId: Ref<SupportActionRequest> | undefined
 
   $: actionIssue = { ...issue, assignee }
   $: chrome = resolveTakeoverChromeState(actionIssue, projection)
@@ -87,6 +106,41 @@
     canManageSupportActions,
     submitting
   )
+  $: terminalAction = resolveTerminalActionControlState(
+    actionIssue,
+    chrome,
+    actionRequest,
+    currentEmployee,
+    canManageSupportActions,
+    canAssignLead,
+    assigneeInActiveRoster,
+    submitting
+  )
+  $: currentTerminalRequest =
+    actionRequest?.action === 'resolve_case' || actionRequest?.action === 'reopen_case' ? actionRequest : undefined
+  $: terminalResolveProofCurrent =
+    currentEmployee !== undefined &&
+    actionIssue.assignee === currentEmployee &&
+    (
+      actionIssue.status === ('ndax:status:support:HumanActive' as Ref<IssueStatus>)
+        ? chrome.confirmed
+        : chrome.projectionCurrent && chrome.claimOwner === actionIssue.assignee
+    )
+  $: terminalReopenProofCurrent =
+    actionIssue.status === ('ndax:status:support:Resolved' as Ref<IssueStatus>) &&
+    actionIssue.assignee !== null &&
+    assigneeInActiveRoster
+  $: if (currentTerminalRequest !== undefined && hydratedTerminalDraftRequestId !== currentTerminalRequest._id) {
+    terminalDraftReasonCode = currentTerminalRequest.reasonCode
+    terminalDraftReasonDetail = currentTerminalRequest.reasonDetail ?? ''
+    hydratedTerminalDraftRequestId = currentTerminalRequest._id
+  }
+  $: if (
+    terminalDialogAction !== undefined &&
+    !terminalDialogRoleAllowed(terminalDialogAction)
+  ) {
+    closeTerminalDialog(true)
+  }
   $: statusItems = [
     { id: 'ndax:status:support:WaitingOnCustomer', label: customerSuccess.string.WaitingOnCustomer },
     { id: 'ndax:status:support:WaitingOnInternal', label: customerSuccess.string.WaitingOnInternal }
@@ -137,7 +191,77 @@
     return actionRequest?.action ?? lastSubmittedAction
   }
 
+  function wipeTerminalDraft (): void {
+    terminalDraftReasonCode = undefined
+    terminalDraftReasonDetail = ''
+    hydratedTerminalDraftRequestId = undefined
+  }
+
+  function terminalDialogRoleAllowed (action: TerminalAction): boolean {
+    return action === 'resolve_case' ? canManageSupportActions : canAssignLead
+  }
+
+  function terminalDialogSnapshotCurrent (
+    snapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>
+  ): boolean {
+    return (
+      snapshot._id === actionIssue._id &&
+      snapshot.status === actionIssue.status &&
+      snapshot.assignee === actionIssue.assignee &&
+      snapshot.modifiedOn === actionIssue.modifiedOn
+    )
+  }
+
+  function terminalDialogProofCurrent (action: TerminalAction): boolean {
+    if (action === 'resolve_case') return terminalResolveProofCurrent
+    return terminalReopenProofCurrent
+  }
+
+  function terminalDialogStale (): boolean {
+    if (terminalDialogAction === undefined || terminalDialogSnapshot === undefined) return false
+    return !terminalDialogSnapshotCurrent(terminalDialogSnapshot) || !terminalDialogProofCurrent(terminalDialogAction)
+  }
+
+  function terminalDialogConflict (): boolean {
+    if (
+      terminalDialogAction === undefined ||
+      terminalDialogSnapshot === undefined ||
+      currentTerminalRequest === undefined ||
+      currentTerminalRequest.action !== terminalDialogAction ||
+      !terminalDialogSnapshotCurrent(terminalDialogSnapshot)
+    ) {
+      return false
+    }
+
+    return (
+      (currentTerminalRequest.state === 'failed' || currentTerminalRequest.state === 'superseded') &&
+      terminalDraftReasonCode !== undefined &&
+      currentTerminalRequest.reasonCode === terminalDraftReasonCode
+    )
+  }
+
   function requestLabel (): IntlString | undefined {
+    if (requestAction() === 'resolve_case' || requestAction() === 'reopen_case') {
+      if (submissionFailed) return customerSuccess.string.TerminalRequestFailed
+      if (terminalAction.reconciled) return customerSuccess.string.TerminalRequestConfirmed
+      if (terminalAction.awaitingReconciliation) {
+        return customerSuccess.string.TerminalRequestAwaitingReconciliation
+      }
+      switch (terminalAction.requestState) {
+        case 'pending':
+          return customerSuccess.string.TerminalRequestPending
+        case 'processing':
+          return customerSuccess.string.TerminalRequestProcessing
+        case 'failed':
+          return customerSuccess.string.TerminalRequestFailed
+        case 'superseded':
+          return customerSuccess.string.TerminalRequestSuperseded
+        case 'succeeded':
+          return customerSuccess.string.TerminalRequestAwaitingReconciliation
+        default:
+          return undefined
+      }
+    }
     if (requestAction() === 'transition_status') {
       if (submissionFailed) return customerSuccess.string.StatusRequestFailed
       if (statusTransition.reconciled) return customerSuccess.string.StatusRequestConfirmed
@@ -202,6 +326,24 @@
   }
 
   function requestLabelType (): StateType {
+    if (requestAction() === 'resolve_case' || requestAction() === 'reopen_case') {
+      if (submissionFailed) return StateType.Negative
+      if (terminalAction.reconciled) return StateType.Positive
+      if (terminalAction.awaitingReconciliation) return StateType.Ghost
+      switch (terminalAction.requestState) {
+        case 'pending':
+        case 'processing':
+          return StateType.Primary
+        case 'failed':
+          return StateType.Negative
+        case 'superseded':
+          return StateType.Regular
+        case 'succeeded':
+          return StateType.Ghost
+        default:
+          return StateType.Regular
+      }
+    }
     if (requestAction() === 'transition_status') {
       if (submissionFailed) return StateType.Negative
       if (statusTransition.reconciled) return StateType.Positive
@@ -257,6 +399,9 @@
   }
 
   function requestTitleLabel (): IntlString {
+    if (requestAction() === 'resolve_case' || requestAction() === 'reopen_case') {
+      return customerSuccess.string.TerminalRequest
+    }
     if (requestAction() === 'transition_status') return customerSuccess.string.StatusRequest
     if (requestAction() === 'reassign_assignee') return customerSuccess.string.ReassignLead
     if (requestAction() === 'assign_assignee') return customerSuccess.string.AssignLeadRequest
@@ -291,10 +436,54 @@
     if (!statusTransition.canSubmit || typeof event.detail !== 'string') return
     void requestTransitionStatus(event.detail as Ref<IssueStatus>)
   }
+
+  function openTerminalDialog (): void {
+    if (!terminalAction.visible || terminalAction.action === undefined || terminalAction.targetStatus === undefined) {
+      return
+    }
+    terminalDialogAction = terminalAction.action
+    if (!isTerminalReasonAllowed(terminalDialogAction, terminalDraftReasonCode)) {
+      terminalDraftReasonCode = undefined
+      terminalDraftReasonDetail = ''
+    }
+    terminalDialogSnapshot = {
+      _id: actionIssue._id,
+      status: actionIssue.status,
+      assignee: actionIssue.assignee,
+      modifiedOn: actionIssue.modifiedOn
+    }
+  }
+
+  function closeTerminalDialog (wipe = false): void {
+    terminalDialogAction = undefined
+    terminalDialogSnapshot = undefined
+    if (wipe) wipeTerminalDraft()
+  }
+
+  async function confirmTerminalAction (reasonCode: SupportLifecycleReasonCode, reasonDetail: string): Promise<void> {
+    if (terminalDialogAction === undefined || terminalDialogSnapshot === undefined) {
+      return
+    }
+    if (!isTerminalReasonAllowed(terminalDialogAction, reasonCode)) return
+    const accepted = await requestTerminalAction(
+      terminalDialogSnapshot,
+      terminalDialogAction,
+      terminalDialogAction === 'resolve_case'
+        ? ('ndax:status:support:Resolved' as Ref<IssueStatus>)
+        : ('ndax:status:support:Reopened' as Ref<IssueStatus>),
+      reasonCode,
+      reasonDetail
+    )
+    if (accepted) closeTerminalDialog()
+  }
 </script>
 
-{#if chrome.stage !== 'other' || claimSelf.visible || assigneeChange.visible || statusTransition.visible || shouldShowRequestLabel()}
-  <section class="takeover-state" aria-labelledby="customer-success-takeover-state-heading">
+{#if chrome.stage !== 'other' || claimSelf.visible || assigneeChange.visible || statusTransition.visible || terminalAction.visible || shouldShowRequestLabel()}
+  <section
+    class="takeover-state"
+    aria-labelledby="customer-success-takeover-state-heading"
+    aria-busy={claimSelf.busy || assigneeChange.busy || statusTransition.busy || terminalAction.busy}
+  >
     <div class="takeover-heading">
       <div class="heading-summary">
         <h2 id="customer-success-takeover-state-heading"><Label label={customerSuccess.string.TakeoverState} /></h2>
@@ -374,6 +563,26 @@
             />
           </div>
         {/if}
+        {#if terminalAction.visible}
+          <div
+            role="group"
+            aria-describedby={requestAction() === 'resolve_case' || requestAction() === 'reopen_case'
+              ? 'customer-success-terminal-request-state'
+              : undefined}
+          >
+            <Button
+              id="customer-success-terminal-action"
+              size="small"
+              kind={terminalAction.action === 'resolve_case' ? 'negative' : 'primary'}
+              label={terminalAction.action === 'resolve_case'
+                ? customerSuccess.string.ResolveCase
+                : customerSuccess.string.ReopenCase}
+              disabled={terminalAction.busy || terminalAction.awaitingReconciliation || terminalAction.reconciled}
+              loading={terminalAction.busy}
+              on:click={openTerminalDialog}
+            />
+          </div>
+        {/if}
       </div>
     </div>
 
@@ -446,7 +655,12 @@
               ? 'customer-success-status-request-state'
               : requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee'
                 ? 'customer-success-assign-lead-status'
-                : undefined}
+                : requestAction() === 'resolve_case' || requestAction() === 'reopen_case'
+                  ? 'customer-success-terminal-request-state'
+                  : undefined}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
           >
             <StateTag label={requestLabelOrFallback()} type={requestLabelType()} />
           </dd>
@@ -454,6 +668,21 @@
       {/if}
     </dl>
   </section>
+{/if}
+
+{#if terminalDialogAction !== undefined && terminalDialogSnapshot !== undefined}
+  <TerminalActionDialog
+    action={terminalDialogAction}
+    bind:reasonCode={terminalDraftReasonCode}
+    bind:reasonDetail={terminalDraftReasonDetail}
+    {submitting}
+    stale={terminalDialogStale()}
+    conflict={terminalDialogConflict()}
+    requestState={currentTerminalRequest?.state}
+    submissionFailed={submissionFailed && (requestAction() === 'resolve_case' || requestAction() === 'reopen_case')}
+    onConfirm={confirmTerminalAction}
+    onClose={closeTerminalDialog}
+  />
 {/if}
 
 <style lang="scss">

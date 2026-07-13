@@ -108,6 +108,9 @@ after the checker records `verified: PASS` with evidence in `RUN_STATUS.md`.
    - External key: `ndax:engineering:task:customer-success-ui:assignment-and-status-controls`
    - Enforce backend-allowed transitions and role checks.
    - Handle claim races, stale tabs, pending state, errors, and reconciliation.
+   - Apply `TERMINAL-LIFECYCLE-CONTRACT.md`: owner-confirmed controlled-reason
+     resolution, lead-only controlled-reason reopen, system-only Closed, and
+     no terminal shortcut for Escalated.
 
 6. Public reply and internal note composer split
    - External key: `ndax:engineering:task:customer-success-ui:reply-and-note-composer`

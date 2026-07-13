@@ -159,6 +159,12 @@ export class TSupportActionRequest extends TDoc implements SupportActionRequest 
   @Index(IndexKind.Indexed)
     expectedModifiedOn!: Timestamp
 
+  @Prop(TypeString(), getEmbeddedLabel('Reason code'))
+    reasonCode?: SupportActionRequest['reasonCode']
+
+  @Prop(TypeString(), getEmbeddedLabel('Reason detail'))
+    reasonDetail?: string
+
   @Prop(TypeString(), getEmbeddedLabel('State'))
     state!: SupportActionRequestState
 

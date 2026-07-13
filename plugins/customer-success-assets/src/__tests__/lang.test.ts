@@ -40,3 +40,55 @@ it('keeps every shipped locale file structurally aligned with english', () => {
     expect(localeShape).toEqual(englishShape)
   }
 })
+
+it('ships genuine non-English lifecycle and reconciliation copy in every registered locale', () => {
+  const langDir = join(__dirname, '../../lang')
+  const english = JSON.parse(readFileSync(join(langDir, 'en.json'), 'utf8')).string
+  const localeFiles = readdirSync(langDir)
+    .filter((file) => file.endsWith('.json') && file !== 'en.json')
+    .sort()
+
+  for (const key of [
+    'ResolvedQueue',
+    'NoResolvedTickets',
+    'PendingAcknowledgement',
+    'TakeoverConfirmed',
+    'ReconciliationPending',
+    'ClaimRequestPending',
+    'ClaimRequestProcessing',
+    'ClaimRequestAwaitingReconciliation',
+    'ClaimRequestFailed',
+    'ClaimRequestSuperseded',
+    'ResolveCase',
+    'ReopenCase',
+    'ResolveCaseTitle',
+    'ReopenCaseTitle',
+    'TerminalActionReason',
+    'TerminalActionReasonPlaceholder',
+    'TerminalActionDetail',
+    'TerminalActionDetailLimit',
+    'TerminalActionStale',
+    'TerminalActionConflict',
+    'CustomerConfirmedReason',
+    'RequestCompletedReason',
+    'InformationProvidedReason',
+    'DuplicateRequestReason',
+    'CustomerFollowUpReason',
+    'IncompleteResolutionReason',
+    'NewInformationReason',
+    'QualityReviewReason',
+    'TerminalRequestPending',
+    'TerminalRequestProcessing',
+    'TerminalRequestAwaitingReconciliation',
+    'TerminalRequestFailed',
+    'TerminalRequestSuperseded',
+    'TerminalRequestConfirmed'
+  ]) {
+    expect(english[key]).toEqual(expect.any(String))
+    for (const file of localeFiles) {
+      const locale = JSON.parse(readFileSync(join(langDir, file), 'utf8')).string
+      expect(locale[key]).toEqual(expect.any(String))
+      expect(locale[key]).not.toBe(english[key])
+    }
+  }
+})
