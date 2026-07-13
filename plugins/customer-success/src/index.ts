@@ -68,6 +68,27 @@ export interface ConversationBinding extends Doc {
   schemaVersion: number
 }
 
+export type SupportActionRequestAction = 'claim_self'
+export type SupportActionRequestState = 'pending' | 'processing' | 'succeeded' | 'failed' | 'superseded'
+
+/** Human-created, system-consumed support action request in the internal projection space. */
+export interface SupportActionRequest extends Doc {
+  issueId: Ref<Issue>
+  action: SupportActionRequestAction
+  requestedAssignee: Ref<Person>
+  expectedStatus: Ref<IssueStatus>
+  expectedAssignee: Ref<Person> | null
+  expectedModifiedOn: Timestamp
+  state: SupportActionRequestState
+  resultCode?: string
+  errorCode?: string
+  processingLeaseId?: string
+  processingLeaseExpiresAt?: Timestamp
+  processedAt?: Timestamp
+  idempotencyKey: string
+  schemaVersion: number
+}
+
 export type LiveSessionStage = 'bot_active' | 'shadowing' | 'takeover_requested' | 'human_active' | 'other'
 export type LiveSessionRecoveryState = 'none' | 'unassigned' | 'unauthorized_assignee' | 'lock_expired'
 
@@ -99,6 +120,7 @@ const customerSuccess = plugin(customerSuccessId, {
   class: {
     ConversationEvent: '' as Ref<Class<ConversationEvent>>,
     ConversationBinding: '' as Ref<Class<ConversationBinding>>,
+    SupportActionRequest: '' as Ref<Class<SupportActionRequest>>,
     LiveSessionState: '' as Ref<Class<LiveSessionState>>,
     ConversationProjectionSpace: '' as Ref<Class<ConversationProjectionSpace>>
   },
@@ -123,6 +145,8 @@ const customerSuccess = plugin(customerSuccessId, {
     ForbidCreateConversationBinding: '' as Ref<Permission>,
     ForbidUpdateConversationBinding: '' as Ref<Permission>,
     ForbidRemoveConversationBinding: '' as Ref<Permission>,
+    ForbidUpdateSupportActionRequest: '' as Ref<Permission>,
+    ForbidRemoveSupportActionRequest: '' as Ref<Permission>,
     ForbidCreateLiveSessionState: '' as Ref<Permission>,
     ForbidUpdateLiveSessionState: '' as Ref<Permission>,
     ForbidRemoveLiveSessionState: '' as Ref<Permission>,
@@ -196,7 +220,14 @@ const customerSuccess = plugin(customerSuccessId, {
     UnauthorizedAssignee: '' as IntlString,
     LockExpired: '' as IntlString,
     ReconciliationPending: '' as IntlString,
-    ConversationViews: '' as IntlString
+    ConversationViews: '' as IntlString,
+    ClaimSelf: '' as IntlString,
+    ClaimRequest: '' as IntlString,
+    ClaimRequestPending: '' as IntlString,
+    ClaimRequestProcessing: '' as IntlString,
+    ClaimRequestAwaitingReconciliation: '' as IntlString,
+    ClaimRequestFailed: '' as IntlString,
+    ClaimRequestSuperseded: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>

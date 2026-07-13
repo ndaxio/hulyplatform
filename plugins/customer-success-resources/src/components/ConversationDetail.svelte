@@ -5,12 +5,21 @@
 -->
 <script lang="ts">
   import activity, { type ActivityMessage } from '@hcengineering/activity'
+  import { getCurrentEmployee } from '@hcengineering/contact'
   import customerSuccess, {
     type ConversationEvent,
     type ConversationProjectionSpace,
-    type LiveSessionState
+    type LiveSessionState,
+    type SupportActionRequest
   } from '@hcengineering/customer-success'
-  import { DateRangeMode, SortingOrder, type DocumentQuery, type Ref } from '@hcengineering/core'
+  import core, {
+    DateRangeMode,
+    SortingOrder,
+    getCurrentAccount,
+    type DocumentQuery,
+    type Ref,
+    type WithLookup
+  } from '@hcengineering/core'
   import type { IntlString } from '@hcengineering/platform'
   import inbox from '@hcengineering/inbox'
   import presentation, { MessageViewer, createQuery, getClient } from '@hcengineering/presentation'
@@ -46,6 +55,13 @@
     type ConversationEntryLane,
     type ConversationVisibilityLane
   } from '../conversation-detail'
+  import {
+    buildSupportActionRequestQuery,
+    claimSelfSupportActionRequestId,
+    isSupportActionRoleMember,
+    shouldReleaseActiveSupportActionRequest,
+    submitClaimSelfSupportActionRequest
+  } from '../action-request'
   import { buildLiveSessionStateQuery } from '../takeover-state'
   import TakeoverStateChrome from './TakeoverStateChrome.svelte'
 
@@ -71,13 +87,20 @@
   const issueQuery = createQuery()
   const statusQuery = createQuery()
   const liveSessionQuery = createQuery()
+  const projectionSpaceQuery = createQuery()
+  const supportActionRequestQuery = createQuery()
   const historyQuery = createQuery()
   const paginationRequest = new LatestConversationRequest()
+  const currentAccount = getCurrentAccount()
+  const currentEmployee = getCurrentEmployee()
+  const hierarchy = client.getHierarchy()
 
   let state: DetailState = 'loading'
   let issue: Issue | undefined
   let issueStatus: IssueStatus | undefined
   let liveSessionState: LiveSessionState | undefined
+  let internalProjectionSpace: WithLookup<ConversationProjectionSpace> | undefined
+  let supportActionRequest: SupportActionRequest | undefined
   let subscribedIssueId: Ref<Issue> | undefined
   let visibleMessages: VisibleMessage[] = []
   let headMessages: Record<ConversationVisibilityLane, SupportConversationEvent[]> = {
@@ -105,6 +128,13 @@
   let earlierLoading = false
   let historyLoading = true
   let mobileLane: 'conversation' | 'activity' = 'conversation'
+  let canManageSupportActions = false
+  let trackedInternalProjectionSpaceId: Ref<ConversationProjectionSpace> | undefined
+  let trackedSupportActionRequestId: Ref<SupportActionRequest> | undefined
+  let activeSupportActionRequestId: Ref<SupportActionRequest> | undefined
+  let trackedRequestId: Ref<SupportActionRequest> | undefined
+  let claimSubmitting = false
+  let claimSubmissionFailed = false
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
 
@@ -120,6 +150,12 @@
     earlierLoading = false
     history = []
     subscribedIssueId = undefined
+    trackedSupportActionRequestId = undefined
+    activeSupportActionRequestId = undefined
+    claimSubmitting = false
+    claimSubmissionFailed = false
+    supportActionRequest = undefined
+    supportActionRequestQuery.unsubscribe()
   }
 
   function watchIssue (identifier: string, supportProjectId: Ref<Project>): void {
@@ -128,6 +164,7 @@
     issue = undefined
     issueStatus = undefined
     liveSessionState = undefined
+    supportActionRequest = undefined
 
     if (query === undefined) {
       issueQuery.unsubscribe()
@@ -180,6 +217,37 @@
         liveSessionState = result[0]
       },
       { limit: 1, sort: { observedAt: SortingOrder.Descending } }
+    )
+  }
+
+  function watchInternalProjectionSpace (spaceId: Ref<ConversationProjectionSpace>): void {
+    projectionSpaceQuery.query(
+      customerSuccess.class.ConversationProjectionSpace,
+      { _id: spaceId },
+      (result) => {
+        internalProjectionSpace = result[0] as WithLookup<ConversationProjectionSpace> | undefined
+      },
+      {
+        limit: 1,
+        lookup: {
+          type: [core.class.SpaceType, { _id: { roles: core.class.Role } }]
+        }
+      }
+    )
+  }
+
+  function watchSupportActionRequest (target: Issue, requestId: Ref<SupportActionRequest>): void {
+    trackedSupportActionRequestId = requestId
+    supportActionRequestQuery.query(
+      customerSuccess.class.SupportActionRequest,
+      buildSupportActionRequestQuery(projectionSpaceIds.internal, requestId, target._id),
+      (result) => {
+        if (issue?._id !== target._id || trackedSupportActionRequestId !== requestId) return
+        supportActionRequest = result[0]
+        claimSubmitting = false
+        claimSubmissionFailed = false
+      },
+      { limit: 1 }
     )
   }
 
@@ -329,14 +397,67 @@
     issueQuery.refreshClient()
     statusQuery.refreshClient()
     liveSessionQuery.refreshClient()
+    projectionSpaceQuery.refreshClient()
+    supportActionRequestQuery.refreshClient()
     historyQuery.refreshClient()
     for (const query of Object.values(transcriptQueries)) query.refreshClient()
   }
 
+  async function requestClaimSelf (): Promise<void> {
+    if (issue === undefined || currentEmployee === undefined || !canManageSupportActions || claimSubmitting) return
+
+    claimSubmitting = true
+    claimSubmissionFailed = false
+    try {
+      const { requestId, committed } = await submitClaimSelfSupportActionRequest(
+        client,
+        projectionSpaceIds.internal,
+        issue,
+        currentAccount.uuid,
+        currentEmployee
+      )
+      activeSupportActionRequestId = requestId
+      trackedSupportActionRequestId = undefined
+      if (!committed.result) {
+        claimSubmitting = false
+        supportActionRequestQuery.refreshClient()
+      }
+    } catch {
+      claimSubmitting = false
+      claimSubmissionFailed = true
+    }
+  }
+
   $: watchIssue(issueIdentifier, projectId)
+  $: canManageSupportActions = isSupportActionRoleMember(internalProjectionSpace, hierarchy, currentAccount.uuid)
+  $: trackedRequestId =
+    issue === undefined
+      ? undefined
+      : (activeSupportActionRequestId ??
+        claimSelfSupportActionRequestId(issue._id, currentAccount.uuid, issue.modifiedOn))
+  $: if (issue !== undefined && shouldReleaseActiveSupportActionRequest(supportActionRequest, issue.modifiedOn)) {
+    activeSupportActionRequestId = undefined
+    trackedSupportActionRequestId = undefined
+  }
+  $: if (trackedInternalProjectionSpaceId !== projectionSpaceIds.internal) {
+    trackedInternalProjectionSpaceId = projectionSpaceIds.internal
+    watchInternalProjectionSpace(projectionSpaceIds.internal)
+  }
   $: if (state === 'ready' && issue !== undefined) {
     watchIssueStatus(issue)
     watchLiveSessionState(issue)
+    if (
+      canManageSupportActions &&
+      trackedRequestId !== undefined &&
+      trackedSupportActionRequestId !== trackedRequestId
+    ) {
+      watchSupportActionRequest(issue, trackedRequestId)
+    } else if (!canManageSupportActions || trackedRequestId === undefined) {
+      trackedSupportActionRequestId = undefined
+      supportActionRequest = undefined
+      claimSubmitting = false
+      supportActionRequestQuery.unsubscribe()
+    }
     if (subscribedIssueId !== issue._id) {
       subscribedIssueId = issue._id
       watchTranscript(issue)
@@ -388,7 +509,16 @@
       </div>
     </div>
 
-    <TakeoverStateChrome {issue} projection={liveSessionState} />
+    <TakeoverStateChrome
+      {issue}
+      projection={liveSessionState}
+      actionRequest={supportActionRequest}
+      {currentEmployee}
+      {canManageSupportActions}
+      submitting={claimSubmitting}
+      submissionFailed={claimSubmissionFailed}
+      {requestClaimSelf}
+    />
 
     {#if $deviceInfo.isMobile}
       <span id="customer-success-detail-views" class="sr-only">

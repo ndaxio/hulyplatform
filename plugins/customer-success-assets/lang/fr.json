@@ -52,6 +52,13 @@
     "UnauthorizedAssignee": "Responsable non autorisé",
     "LockExpired": "Verrou de prise en charge expiré",
     "ReconciliationPending": "Rapprochement en attente",
-    "ConversationViews": "Vues de la conversation"
+    "ConversationViews": "Vues de la conversation",
+    "ClaimSelf": "Prendre en charge",
+    "ClaimRequest": "Demande de prise en charge",
+    "ClaimRequestPending": "Demande en attente",
+    "ClaimRequestProcessing": "Demande en cours",
+    "ClaimRequestAwaitingReconciliation": "En attente du rapprochement de la session en direct",
+    "ClaimRequestFailed": "Échec de la demande de prise en charge",
+    "ClaimRequestSuperseded": "Demande de prise en charge remplacée"
   }
 }

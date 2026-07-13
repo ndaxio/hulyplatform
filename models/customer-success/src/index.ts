@@ -28,6 +28,9 @@ import customerSuccess, {
   type LiveSessionRecoveryState,
   type LiveSessionStage,
   type LiveSessionState,
+  type SupportActionRequest,
+  type SupportActionRequestAction,
+  type SupportActionRequestState,
   customerSuccessId,
   customerSuccessLiveInboxId
 } from '@hcengineering/customer-success'
@@ -130,6 +133,55 @@ export class TConversationBinding extends TDoc implements ConversationBinding {
     schemaVersion!: number
 }
 
+@Model(customerSuccess.class.SupportActionRequest, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)
+export class TSupportActionRequest extends TDoc implements SupportActionRequest {
+  @Prop(TypeRef(tracker.class.Issue), getEmbeddedLabel('Issue id'))
+  @Index(IndexKind.Indexed)
+    issueId!: Ref<Issue>
+
+  @Prop(TypeString(), getEmbeddedLabel('Action'))
+    action!: SupportActionRequestAction
+
+  @Prop(TypeRef(contact.class.Person), getEmbeddedLabel('Requested assignee'))
+  @Index(IndexKind.Indexed)
+    requestedAssignee!: Ref<Person>
+
+  @Prop(TypeRef(tracker.class.IssueStatus), getEmbeddedLabel('Expected status'))
+    expectedStatus!: Ref<IssueStatus>
+
+  @Prop(TypeRef(contact.class.Person), getEmbeddedLabel('Expected assignee'))
+    expectedAssignee!: Ref<Person> | null
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Expected modified on'))
+  @Index(IndexKind.Indexed)
+    expectedModifiedOn!: Timestamp
+
+  @Prop(TypeString(), getEmbeddedLabel('State'))
+    state!: SupportActionRequestState
+
+  @Prop(TypeString(), getEmbeddedLabel('Result code'))
+    resultCode?: string
+
+  @Prop(TypeString(), getEmbeddedLabel('Error code'))
+    errorCode?: string
+
+  @Prop(TypeString(), getEmbeddedLabel('Processing lease id'))
+    processingLeaseId?: string
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Processing lease expires at'))
+    processingLeaseExpiresAt?: Timestamp
+
+  @Prop(TypeTimestamp(), getEmbeddedLabel('Processed at'))
+    processedAt?: Timestamp
+
+  @Prop(TypeString(), getEmbeddedLabel('Idempotency key'))
+  @Index(IndexKind.Indexed)
+    idempotencyKey!: string
+
+  @Prop(TypeNumber(), getEmbeddedLabel('Schema version'))
+    schemaVersion!: number
+}
+
 @Model(customerSuccess.class.LiveSessionState, core.class.Doc, DOMAIN_CUSTOMER_SUCCESS)
 export class TLiveSessionState extends TDoc implements LiveSessionState {
   @Prop(TypeRef(tracker.class.Issue), getEmbeddedLabel('Issue id'))
@@ -192,6 +244,8 @@ const projectionForbidPermissions: Ref<Permission>[] = [
   customerSuccess.permission.ForbidCreateConversationBinding,
   customerSuccess.permission.ForbidUpdateConversationBinding,
   customerSuccess.permission.ForbidRemoveConversationBinding,
+  customerSuccess.permission.ForbidUpdateSupportActionRequest,
+  customerSuccess.permission.ForbidRemoveSupportActionRequest,
   customerSuccess.permission.ForbidCreateLiveSessionState,
   customerSuccess.permission.ForbidUpdateLiveSessionState,
   customerSuccess.permission.ForbidRemoveLiveSessionState,
@@ -250,6 +304,18 @@ function defineProjectionSecurity (builder: Builder): void {
       core.class.TxRemoveDoc,
       customerSuccess.class.ConversationBinding,
       'Remove conversation binding'
+    ],
+    [
+      customerSuccess.permission.ForbidUpdateSupportActionRequest,
+      core.class.TxUpdateDoc,
+      customerSuccess.class.SupportActionRequest,
+      'Update support action request'
+    ],
+    [
+      customerSuccess.permission.ForbidRemoveSupportActionRequest,
+      core.class.TxRemoveDoc,
+      customerSuccess.class.SupportActionRequest,
+      'Remove support action request'
     ],
     [
       customerSuccess.permission.ForbidCreateLiveSessionState,
@@ -393,6 +459,7 @@ export function createModel (builder: Builder): void {
   builder.createModel(
     TConversationEvent,
     TConversationBinding,
+    TSupportActionRequest,
     TLiveSessionState,
     TConversationProjectionSpace,
     TConversationProjectionSpaceTypeData
@@ -408,6 +475,12 @@ export function createModel (builder: Builder): void {
 
   builder.mixin(customerSuccess.class.ConversationBinding, core.class.Class, core.mixin.TxAccessLevel, {
     createAccessLevel: AccountRole.Admin,
+    updateAccessLevel: AccountRole.Admin,
+    removeAccessLevel: AccountRole.Admin
+  })
+
+  builder.mixin(customerSuccess.class.SupportActionRequest, core.class.Class, core.mixin.TxAccessLevel, {
+    createAccessLevel: AccountRole.User,
     updateAccessLevel: AccountRole.Admin,
     removeAccessLevel: AccountRole.Admin
   })

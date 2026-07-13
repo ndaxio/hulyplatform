@@ -18,6 +18,14 @@ system-written `customer-success:class:LiveSessionState` document per support
 issue in the internal projection space. It is never inferred from transcript
 text and never used to override the authoritative Tracker issue status.
 
+Human operators request claim-side effects by creating one
+`customer-success:class:SupportActionRequest` document in the internal
+projection space through the ordinary authenticated Huly client. The browser
+never calls the adapter directly and never receives adapter credentials or
+tokens. The request document is consumed asynchronously by the trusted adapter,
+which derives the immutable creator from Huly transaction identity and ignores
+any caller-supplied actor field.
+
 Exact conversation-to-ticket resolution uses an immutable
 `customer-success:class:ConversationBinding` document keyed by a SHA-256 digest
 of the full conversation id. A binding contains the exact conversation id,
@@ -83,6 +91,41 @@ source status, claim owner, and observation time reconcile with the current
 reactive Issue. Coarse stage always comes from `Issue.status`. Confirmed success
 requires both exact Human Active and a current adapter projection with
 `acknowledged: true`; otherwise the UI remains reconciliation pending.
+`SupportActionRequest.state === succeeded` is never enough to render takeover
+success on its own.
+
+Failed and superseded requests stay visible for their original Issue snapshot.
+When the Issue advances to a different `modifiedOn`, the detail view releases
+the stale request id and derives a fresh deterministic request for the new
+snapshot, restoring the operator's claim path without reusing stale intent.
+
+## Support Action Request Schema
+
+Each request id is deterministic and exact-id guarded:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:claim_self:<expectedModifiedOn>`
+
+The browser creates it through `client.apply(requestId).notMatch(...)` guarded
+by the globally unique exact `_id`. Its reactive read subscription additionally
+requires the exact internal `space`, `issueId`, and `schemaVersion: 1`.
+
+| Field | Contract |
+|---|---|
+| `_id` | Deterministic id built from issue id, current account uuid, action, and expected modified time. |
+| `space` | Exact internal projection space. |
+| `issueId` | Exact Huly support issue reference. |
+| `action` | `claim_self` for CSSC-15. |
+| `requestedAssignee` | Huly Person the creator is requesting for claim/ack. |
+| `expectedStatus` | Exact issue status the request expects. |
+| `expectedAssignee` | Exact expected assignee, or null. |
+| `expectedModifiedOn` | Exact issue `modifiedOn` timestamp the browser observed. |
+| `state` | `pending`, `processing`, `succeeded`, `failed`, or `superseded`. |
+| `resultCode` / `errorCode` | Optional system-written outcome codes. |
+| `processingLeaseId` | Opaque adapter-written ownership token. Browser clients must not set or trust it. |
+| `processingLeaseExpiresAt` | Adapter-written lease expiry used to recover abandoned processing safely. |
+| `processedAt` | Optional system-written processing time. |
+| `idempotencyKey` | Stable retry key; equal to the deterministic id in CSSC-15. |
+| `schemaVersion` | Exact supported schema; initially `1`. |
 
 ## Authorization
 
@@ -113,13 +156,25 @@ not the final writer boundary. Before production activation, each projection
 space type must assign class-scoped forbid-create, forbid-update, and
 forbid-remove permissions for `ConversationEvent`, `ConversationBinding`, and
 `LiveSessionState`, plus projection-space update/remove and role-mixin update
-forbids, to every human role in the space type. Huly's restricted
-space middleware keeps a single bypass for `core.account.System`, which is the
-trusted writer path. A live mutation test must prove support agent, support
-lead, maintainer, owner, and ordinary admin sessions cannot forge or alter an
-event, binding, or live-session state.
+forbids, to every human role in the space type.
 
-This worktree defines the typed space model, the twelve forbid permissions, the
+`SupportActionRequest` is intentionally different:
+
+- humans may create it through the internal projection space;
+- humans must be forbidden from update/remove;
+- the browser shows claim-self controls only to SupportAgent and SupportLead
+  role members; compliance-only viewers must not see those controls;
+- the adapter independently verifies that the immutable creator identity maps to
+  `requestedAssignee` and holds the support-agent or support-lead role before
+  taking action.
+
+Huly's restricted space middleware keeps a single bypass for
+`core.account.System`, which is the trusted writer path. A live mutation test
+must prove support agent, support lead, maintainer, owner, and ordinary admin
+sessions cannot forge or alter an event, binding, live-session state, or
+update/remove a support action request.
+
+This worktree defines the typed space model, the fourteen forbid permissions, the
 three role documents, and the client metadata hooks. It does not provision the
 three concrete space documents or their role-member assignments in this repo.
 
@@ -143,6 +198,10 @@ The trusted adapter writer must:
    events linked by source metadata retained outside the browser contract.
 7. Upsert live-session state only after canonical support state is known. Failed
    conditional claim/ack/release writes must not advance the projection.
+8. Consume `SupportActionRequest` only from the exact internal projection space.
+   Derive creator identity from the persisted Huly transaction, verify role and
+   assignee mapping, verify expected status/assignee/modifiedOn, then invoke the
+   existing CAS claim/ack flow plus the stable joined notice.
 
 ## Ordering And Pagination
 
@@ -206,6 +265,10 @@ Completion requires all of the following:
 - Retry tests prove one source event creates exactly one projection document.
 - Live-session tests prove deterministic upsert identity, pending versus
   confirmed state, expiry/recovery projection, and no write after failed CAS.
+- Support-action tests prove exact-id CAS creation, no browser adapter token,
+  unauthorized-role control suppression, and that request `state: succeeded`
+  still renders only as waiting until reconciled `LiveSessionState`
+  confirmation arrives.
 - Log capture proves message bodies and regulated identifiers are absent from
   adapter, transactor, and browser console logs.
 - Authenticated desktop and mobile portal traces pass before merge or activation.

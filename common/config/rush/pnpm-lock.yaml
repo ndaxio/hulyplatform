@@ -19287,6 +19287,9 @@ importers:
 
   ../../plugins/customer-success:
     dependencies:
+      '@hcengineering/contact':
+        specifier: workspace:^0.7.0
+        version: link:../contact
       '@hcengineering/core':
         specifier: workspace:^0.7.26
         version: link:../../foundations/core/packages/core

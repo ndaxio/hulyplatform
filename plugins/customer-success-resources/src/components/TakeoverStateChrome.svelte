@@ -5,19 +5,39 @@
 -->
 <script lang="ts">
   import contact from '@hcengineering/contact'
-  import customerSuccess, { type LiveSessionState, type LiveSessionStage } from '@hcengineering/customer-success'
+  import customerSuccess, {
+    type LiveSessionState,
+    type LiveSessionStage,
+    type SupportActionRequest
+  } from '@hcengineering/customer-success'
   import { DateRangeMode } from '@hcengineering/core'
   import type { IntlString } from '@hcengineering/platform'
-  import { Component, DatePresenter, Label, StateTag, StateType } from '@hcengineering/ui'
+  import { Button, Component, DatePresenter, Label, StateTag, StateType } from '@hcengineering/ui'
+  import type { Person } from '@hcengineering/contact'
   import type { Issue } from '@hcengineering/tracker'
 
   import { resolveTakeoverChromeState } from '../takeover-state'
+  import { resolveClaimSelfControlState } from '../action-request'
 
   export let issue: Issue
   export let projection: LiveSessionState | undefined
+  export let actionRequest: SupportActionRequest | undefined
+  export let currentEmployee: Person['_id'] | undefined
+  export let canManageSupportActions = false
+  export let submitting = false
+  export let submissionFailed = false
+  export let requestClaimSelf: () => Promise<void>
 
   $: chrome = resolveTakeoverChromeState(issue, projection)
   $: recovery = recoveryLabel(chrome.recoveryState)
+  $: claimSelf = resolveClaimSelfControlState(
+    issue,
+    chrome,
+    actionRequest,
+    currentEmployee,
+    canManageSupportActions,
+    submitting
+  )
 
   function stageLabel (stage: LiveSessionStage): IntlString {
     switch (stage) {
@@ -59,18 +79,72 @@
         return undefined
     }
   }
+
+  function claimRequestLabel (): IntlString | undefined {
+    if (submissionFailed) return customerSuccess.string.ClaimRequestFailed
+    if (claimSelf.awaitingReconciliation) return customerSuccess.string.ClaimRequestAwaitingReconciliation
+
+    switch (claimSelf.requestState) {
+      case 'pending':
+        return customerSuccess.string.ClaimRequestPending
+      case 'processing':
+        return customerSuccess.string.ClaimRequestProcessing
+      case 'failed':
+        return customerSuccess.string.ClaimRequestFailed
+      case 'superseded':
+        return customerSuccess.string.ClaimRequestSuperseded
+      case 'succeeded':
+        return customerSuccess.string.ClaimRequestAwaitingReconciliation
+      default:
+        return undefined
+    }
+  }
+
+  function claimRequestType (): StateType {
+    if (claimSelf.awaitingReconciliation) return StateType.Ghost
+
+    switch (claimSelf.requestState) {
+      case 'pending':
+      case 'processing':
+        return StateType.Primary
+      case 'failed':
+        return StateType.Negative
+      case 'superseded':
+        return StateType.Regular
+      case 'succeeded':
+        return StateType.Ghost
+      default:
+        return StateType.Regular
+    }
+  }
 </script>
 
-{#if chrome.stage !== 'other'}
+{#if chrome.stage !== 'other' || claimSelf.visible || claimRequestLabel() !== undefined}
   <section class="takeover-state" aria-labelledby="customer-success-takeover-state-heading">
     <div class="takeover-heading">
-      <h2 id="customer-success-takeover-state-heading"><Label label={customerSuccess.string.TakeoverState} /></h2>
-      <span class="state-tag">
-        <StateTag
-          label={chrome.reconciliationPending ? customerSuccess.string.ReconciliationPending : stageLabel(chrome.stage)}
-          type={stageType(chrome.stage)}
+      <div class="heading-summary">
+        <h2 id="customer-success-takeover-state-heading"><Label label={customerSuccess.string.TakeoverState} /></h2>
+        <span class="state-tag">
+          <StateTag
+            label={chrome.reconciliationPending
+              ? customerSuccess.string.ReconciliationPending
+              : stageLabel(chrome.stage)}
+            type={stageType(chrome.stage)}
+          />
+        </span>
+      </div>
+      {#if claimSelf.visible}
+        <Button
+          size="small"
+          kind="primary"
+          label={customerSuccess.string.ClaimSelf}
+          disabled={!claimSelf.canSubmit}
+          loading={claimSelf.busy}
+          on:click={() => {
+            void requestClaimSelf()
+          }}
         />
-      </span>
+      {/if}
     </div>
 
     <dl>
@@ -132,6 +206,15 @@
           <dd class="state-tag"><StateTag label={recovery} type={StateType.Negative} /></dd>
         </div>
       {/if}
+
+      {#if claimRequestLabel() !== undefined && claimSelf.visible}
+        <div>
+          <dt><Label label={customerSuccess.string.ClaimRequest} /></dt>
+          <dd class="state-tag">
+            <StateTag label={claimRequestLabel()} type={claimRequestType()} />
+          </dd>
+        </div>
+      {/if}
     </dl>
   </section>
 {/if}
@@ -149,6 +232,14 @@
   dl > div {
     display: flex;
     align-items: center;
+  }
+
+  .heading-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
   .takeover-heading {

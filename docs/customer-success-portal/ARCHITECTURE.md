@@ -174,6 +174,31 @@ id as well as exact internal space, issue id, and schema. The adapter verifies
 the deployed model class and internal space before support mutation and derives
 conversation identity only from the exact immutable binding.
 
+## CSSC-15 Support Action Request Boundary
+
+Claim-self is introduced as one narrow browser-side mutation surface. The
+browser creates a deterministic schema-v1 `SupportActionRequest` document in the
+internal projection space through the ordinary authenticated Huly client:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:claim_self:<expectedModifiedOn>`
+
+Creation is guarded by `client.apply(requestId).notMatch(...)` on the globally
+unique exact id. The reactive read additionally matches the internal space,
+issue id, and schema version. The browser does not call the adapter directly and
+does not receive adapter tokens.
+
+SupportAgent and SupportLead role membership in the internal projection space is
+the only UI path that may render the claim-self control. Compliance-only or
+otherwise unauthorized viewers may still read the rest of the detail page when
+authorized for it, but they must not see action controls or action-request
+status chrome.
+
+`SupportActionRequest.state` is advisory workflow state, not takeover truth.
+Pending, processing, failed, and superseded may be rendered reactively. Even
+`state: succeeded` means only that adapter-side processing completed; takeover
+success is still gated exclusively by reconciled `LiveSessionState` plus
+authoritative `Issue.status`.
+
 ## Registration Surface
 
 The package family will require registration in:

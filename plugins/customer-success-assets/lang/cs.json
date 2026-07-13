@@ -52,6 +52,13 @@
     "UnauthorizedAssignee": "Unauthorized assignee",
     "LockExpired": "Takeover lock expired",
     "ReconciliationPending": "Reconciliation pending",
-    "ConversationViews": "Conversation views"
+    "ConversationViews": "Conversation views",
+    "ClaimSelf": "Claim self",
+    "ClaimRequest": "Claim request",
+    "ClaimRequestPending": "Claim request pending",
+    "ClaimRequestProcessing": "Claim request processing",
+    "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
+    "ClaimRequestFailed": "Claim request failed",
+    "ClaimRequestSuperseded": "Claim request superseded"
   }
 }

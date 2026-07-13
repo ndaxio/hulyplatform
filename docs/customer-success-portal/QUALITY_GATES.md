@@ -22,6 +22,7 @@ but UI delivery must prove its own data boundaries and live behavior.
 | Message lanes | Typed public, internal, restricted, mirrored, and system events; no reliance on display markers. |
 | Browser boundary | No service or adapter token in bundles, network calls, storage, or diagnostics. |
 | Claim concurrency | Two operators race; exactly one wins; loser reconciles without false success. |
+| Exact-id CAS | Duplicate claim-self clicks for one issue snapshot converge on one deterministic request id and one row. |
 | Delivery idempotency | Retry and reconnect cannot duplicate a customer-visible reply. |
 | Stable identity | Rows and events remain stable across refresh, replay, and out-of-order delivery. |
 | Outage recovery | Huly, adapter, and orchestrator failure states are distinct and recover without losing drafts. |
@@ -29,6 +30,7 @@ but UI delivery must prove its own data boundaries and live behavior.
 | Localization | English and French operator copy plus localized date/time and failure states. |
 | Performance | Large queue, long transcript, bounded subscriptions, stable scrolling, and agreed latency budgets. |
 | Audit | Correlation chain from Huly action through customer delivery outcome without transcript leakage in logs. |
+| Unauthorized visibility | SupportActionRequest controls and request-state chrome are absent for non-agent/non-lead viewers. |
 | Retention and attachments | Authorized download, file policy, scanning, retention, legal hold, export, and restore evidence before attachment release. |
 | Live tracer | Two-agent claim, takeover, reply, internal note, restricted denial, reconnect, and retry against live systems. |
 
