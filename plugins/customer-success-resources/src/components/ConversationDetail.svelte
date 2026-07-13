@@ -68,7 +68,8 @@
     claimSelfSupportActionRequestId,
     shouldReleaseActiveSupportActionRequest,
     submitAssignAssigneeSupportActionRequest,
-    submitClaimSelfSupportActionRequest
+    submitClaimSelfSupportActionRequest,
+    submitReassignAssigneeSupportActionRequest
   } from '../action-request'
   import { buildLiveSessionStateQuery, resolveTakeoverChromeState } from '../takeover-state'
   import TakeoverStateChrome from './TakeoverStateChrome.svelte'
@@ -290,16 +291,11 @@
   }
 
   function watchSupportActionRequestHydration (target: Issue, canonicalAssignee: Ref<Person> | null): void {
-    const hydrationKey =
-      `${projectionSpaceIds.internal}:${target._id}:${currentAccount.uuid}:${target.modifiedOn}:${canonicalAssignee ?? 'none'}`
+    const hydrationKey = `${projectionSpaceIds.internal}:${target._id}:${currentAccount.uuid}:${target.modifiedOn}:${canonicalAssignee ?? 'none'}`
     trackedSupportActionRequestHydrationKey = hydrationKey
     supportActionRequestHydrationQuery.query(
       customerSuccess.class.SupportActionRequest,
-      buildSupportActionRequestHydrationQuery(
-        projectionSpaceIds.internal,
-        target._id,
-        currentAccount.uuid
-      ),
+      buildSupportActionRequestHydrationQuery(projectionSpaceIds.internal, target._id, currentAccount.uuid),
       (result) => {
         if (
           issue?._id !== target._id ||
@@ -309,10 +305,10 @@
           return
         }
 
-        hydratedSupportActionRequestId = selectHydratedSupportActionRequestId(
-          result as SupportActionRequest[],
-          { ...target, assignee: canonicalAssignee }
-        )
+        hydratedSupportActionRequestId = selectHydratedSupportActionRequestId(result as SupportActionRequest[], {
+          ...target,
+          assignee: canonicalAssignee
+        })
       },
       {
         limit: 20,
@@ -477,6 +473,12 @@
     for (const query of Object.values(transcriptQueries)) query.refreshClient()
   }
 
+  function releaseStaleSupportActionRequest (): void {
+    activeSupportActionRequestId = undefined
+    hydratedSupportActionRequestId = undefined
+    trackedSupportActionRequestId = undefined
+  }
+
   async function requestClaimSelf (): Promise<void> {
     if (issue === undefined || currentEmployee === undefined || !canManageSupportActions || actionSubmitting) return
 
@@ -538,6 +540,42 @@
     }
   }
 
+  async function requestReassignLead (requestedAssignee: Ref<Person> | null | undefined): Promise<void> {
+    if (
+      issue === undefined ||
+      requestedAssignee == null ||
+      canonicalIssueAssignee === null ||
+      requestedAssignee === canonicalIssueAssignee ||
+      !canAssignLead ||
+      actionSubmitting
+    ) {
+      return
+    }
+
+    lastSubmittedAction = 'reassign_assignee'
+    assignLeadSelection = requestedAssignee
+    actionSubmitting = true
+    actionSubmissionFailed = false
+    try {
+      const { requestId, committed } = await submitReassignAssigneeSupportActionRequest(
+        client,
+        projectionSpaceIds.internal,
+        { ...issue, assignee: canonicalIssueAssignee },
+        currentAccount.uuid,
+        requestedAssignee
+      )
+      activeSupportActionRequestId = requestId
+      trackedSupportActionRequestId = undefined
+      if (!committed.result) {
+        actionSubmitting = false
+        supportActionRequestQuery.refreshClient()
+      }
+    } catch {
+      actionSubmitting = false
+      actionSubmissionFailed = true
+    }
+  }
+
   $: watchIssue(issueIdentifier, projectId)
   $: supportActionRoles = resolveSupportActionRoleAssignments(internalProjectionSpace, hierarchy)
   $: canManageSupportActions =
@@ -570,15 +608,12 @@
     canonicalIssueAssignee = canonicalState.projectionCurrent ? canonicalState.claimOwner : cachedAssignee
   }
   $: if (issue !== undefined && shouldReleaseActiveSupportActionRequest(supportActionRequest, issue.modifiedOn)) {
-    if (supportActionRequest?.action === 'assign_assignee') assignLeadSelection = undefined
-    activeSupportActionRequestId = undefined
-    hydratedSupportActionRequestId = undefined
-    trackedSupportActionRequestId = undefined
+    releaseStaleSupportActionRequest()
   }
-  $: if (supportActionRequest?.action === 'assign_assignee') {
+  $: if (supportActionRequest?.action === 'assign_assignee' || supportActionRequest?.action === 'reassign_assignee') {
     assignLeadSelection = supportActionRequest.requestedAssignee
-  } else if (issue?.assignee === null && activeSupportActionRequestId === undefined) {
-    assignLeadSelection = undefined
+  } else if (!actionSubmitting) {
+    assignLeadSelection = canonicalIssueAssignee
   }
   $: if (trackedInternalProjectionSpaceId !== projectionSpaceIds.internal) {
     trackedInternalProjectionSpaceId = projectionSpaceIds.internal
@@ -587,7 +622,7 @@
   $: if (state === 'ready' && issue !== undefined) {
     const nextTrackedRequestId =
       activeSupportActionRequestId ??
-        hydratedSupportActionRequestId ??
+      hydratedSupportActionRequestId ??
       claimSelfSupportActionRequestId(issue._id, currentAccount.uuid, issue.modifiedOn)
 
     watchIssueStatus(issue)
@@ -616,8 +651,7 @@
     canManageSupportActions &&
     activeSupportActionRequestId === undefined
   ) {
-    const hydrationKey =
-      `${projectionSpaceIds.internal}:${issue._id}:${currentAccount.uuid}:${issue.modifiedOn}:${canonicalIssueAssignee ?? 'none'}`
+    const hydrationKey = `${projectionSpaceIds.internal}:${issue._id}:${currentAccount.uuid}:${issue.modifiedOn}:${canonicalIssueAssignee ?? 'none'}`
     if (trackedSupportActionRequestHydrationKey !== hydrationKey) {
       hydratedSupportActionRequestId = undefined
       watchSupportActionRequestHydration(issue, canonicalIssueAssignee)
@@ -687,6 +721,7 @@
       {assignLeadSelection}
       {requestClaimSelf}
       {requestAssignLead}
+      {requestReassignLead}
     />
 
     {#if $deviceInfo.isMobile}

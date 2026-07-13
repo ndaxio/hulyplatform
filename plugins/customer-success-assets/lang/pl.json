@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "Lider wsparcia",
     "AssignLead": "Przypisz agenta",
+    "ReassignLead": "Przypisz innego agenta",
     "AssignLeadPlaceholder": "Szukaj agentów wsparcia i liderów",
     "AssignLeadRequest": "Prośba o przypisanie",
     "AssignLeadRequestPending": "Prośba o przypisanie oczekuje",

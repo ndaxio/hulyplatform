@@ -9,7 +9,7 @@ import customerSuccess, {
   type SupportActionRequest
 } from '@hcengineering/customer-success'
 import type { AccountUuid, Ref, RolesAssignment, SpaceType, WithLookup } from '@hcengineering/core'
-import type { Person } from '@hcengineering/contact'
+import type { Employee, Person } from '@hcengineering/contact'
 import type { Issue, IssueStatus } from '@hcengineering/tracker'
 
 import {
@@ -21,11 +21,13 @@ import {
   claimSelfSupportActionRequestId,
   isSupportLeadRoleMember,
   resolveAssignLeadControlState,
+  resolveReassignLeadControlState,
   resolveSupportActionRoleAssignments,
   isSupportActionRoleMember,
   resolveClaimSelfControlState,
   selectHydratedSupportActionRequestId,
   submitAssignAssigneeSupportActionRequest,
+  submitReassignAssigneeSupportActionRequest,
   shouldReleaseActiveSupportActionRequest,
   shouldShowSupportActionRequestState,
   submitClaimSelfSupportActionRequest
@@ -93,7 +95,7 @@ function projectionSpace (): WithLookup<ConversationProjectionSpace> {
     }
   }
 
-  return space as WithLookup<ConversationProjectionSpace> & RolesAssignment
+  return space as unknown as WithLookup<ConversationProjectionSpace> & RolesAssignment
 }
 
 describe('Customer Success support action request helpers', () => {
@@ -156,41 +158,44 @@ describe('Customer Success support action request helpers', () => {
 
   it('selects the latest relevant support request deterministically after the issue snapshot advances', () => {
     expect(
-      selectHydratedSupportActionRequestId([
-        actionRequest({
-          _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-4:100' as Ref<SupportActionRequest>,
-          action: 'assign_assignee',
-          requestedAssignee: 'person-4' as Ref<Person>,
-          state: 'succeeded',
-          modifiedOn: 104
-        }),
-        actionRequest({
-          _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-3:100' as Ref<SupportActionRequest>,
-          action: 'assign_assignee',
-          requestedAssignee: 'person-3' as Ref<Person>,
-          state: 'succeeded',
-          modifiedOn: 105
-        }),
-        actionRequest({
-          _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-2:100' as Ref<SupportActionRequest>,
-          action: 'assign_assignee',
-          requestedAssignee: 'person-2' as Ref<Person>,
-          state: 'succeeded',
-          modifiedOn: 105
-        }),
-        actionRequest({
-          _id: 'ndax:support:action-request:issue-1:account-1:claim_self:100' as Ref<SupportActionRequest>,
-          action: 'claim_self',
-          state: 'succeeded',
-          modifiedOn: 999
-        }),
-        actionRequest({
-          _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-1:100' as Ref<SupportActionRequest>,
-          action: 'assign_assignee',
-          schemaVersion: 2,
-          modifiedOn: 999
-        })
-      ], issue('ndax:status:support:NeedsHuman', 'person-2' as Ref<Person>, 200))
+      selectHydratedSupportActionRequestId(
+        [
+          actionRequest({
+            _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-4:100' as Ref<SupportActionRequest>,
+            action: 'assign_assignee',
+            requestedAssignee: 'person-4' as Ref<Person>,
+            state: 'succeeded',
+            modifiedOn: 104
+          }),
+          actionRequest({
+            _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-3:100' as Ref<SupportActionRequest>,
+            action: 'assign_assignee',
+            requestedAssignee: 'person-3' as Ref<Person>,
+            state: 'succeeded',
+            modifiedOn: 105
+          }),
+          actionRequest({
+            _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-2:100' as Ref<SupportActionRequest>,
+            action: 'assign_assignee',
+            requestedAssignee: 'person-2' as Ref<Person>,
+            state: 'succeeded',
+            modifiedOn: 105
+          }),
+          actionRequest({
+            _id: 'ndax:support:action-request:issue-1:account-1:claim_self:100' as Ref<SupportActionRequest>,
+            action: 'claim_self',
+            state: 'succeeded',
+            modifiedOn: 999
+          }),
+          actionRequest({
+            _id: 'ndax:support:action-request:issue-1:account-1:assign_assignee:person-1:100' as Ref<SupportActionRequest>,
+            action: 'assign_assignee',
+            schemaVersion: 2,
+            modifiedOn: 999
+          })
+        ],
+        issue('ndax:status:support:NeedsHuman', 'person-2' as Ref<Person>, 200)
+      )
     ).toBe('ndax:support:action-request:issue-1:account-1:assign_assignee:person-2:100')
     expect(selectHydratedSupportActionRequestId([], issue('ndax:status:support:NeedsHuman'))).toBeUndefined()
   })
@@ -275,6 +280,34 @@ describe('Customer Success support action request helpers', () => {
       'ndax:support:action-request:issue-1:account-1:claim_self:100'
     )
     expect(commit).toHaveBeenCalled()
+  })
+
+  it('creates deterministic reassignment requests with the exact prior assignee snapshot', async () => {
+    const notMatch = jest.fn().mockReturnThis()
+    const createDoc = jest.fn().mockResolvedValue('request-id')
+    const commit = jest.fn().mockResolvedValue({ result: true, time: 3, serverTime: 2 })
+    const apply = jest.fn().mockReturnValue({ notMatch, createDoc, commit })
+
+    const result = await submitReassignAssigneeSupportActionRequest(
+      { apply } as any,
+      'ndax:support:projection:internal' as Ref<ConversationProjectionSpace>,
+      issue('ndax:status:support:NeedsHuman', 'person-1' as Ref<Person>),
+      'account-1' as AccountUuid,
+      'person-2' as Ref<Person>
+    )
+
+    expect(result.requestId).toBe('ndax:support:action-request:issue-1:account-1:reassign_assignee:person-2:100')
+    expect(createDoc).toHaveBeenCalledWith(
+      customerSuccess.class.SupportActionRequest,
+      'ndax:support:projection:internal',
+      expect.objectContaining({
+        action: 'reassign_assignee',
+        requestedAssignee: 'person-2',
+        expectedAssignee: 'person-1',
+        expectedModifiedOn: 100
+      }),
+      'ndax:support:action-request:issue-1:account-1:reassign_assignee:person-2:100'
+    )
   })
 
   it('shows claim-self only to support agents and leads, not compliance-only viewers', () => {
@@ -443,12 +476,7 @@ describe('Customer Success support action request helpers', () => {
       expectedModifiedOn: 100
     })
     expect(
-      resolveAssignLeadControlState(
-        issue('ndax:status:support:Reopened', null, 200),
-        staleAssign,
-        true,
-        false
-      )
+      resolveAssignLeadControlState(issue('ndax:status:support:Reopened', null, 200), staleAssign, true, false)
     ).toEqual(expect.objectContaining({ requestState: 'superseded', visible: true, canSubmit: true, busy: false }))
   })
 
@@ -458,6 +486,31 @@ describe('Customer Success support action request helpers', () => {
     expect(shouldShowSupportActionRequestState('assign_assignee', true, true, true)).toBe(true)
     expect(shouldShowSupportActionRequestState('assign_assignee', true, true, false)).toBe(false)
     expect(shouldShowSupportActionRequestState('assign_assignee', false, true, true)).toBe(false)
+    expect(shouldShowSupportActionRequestState('reassign_assignee', true, true, true)).toBe(true)
     expect(shouldShowSupportActionRequestState(undefined, true, true, true)).toBe(false)
+  })
+
+  it('allows only leads to reassign eligible assigned tickets to a different target', () => {
+    const target = issue('ndax:status:support:NeedsHuman', 'person-1' as Ref<Person>)
+    expect(resolveReassignLeadControlState(target, undefined, 'person-2' as Ref<Person>, true, false)).toEqual(
+      expect.objectContaining({ visible: true, canSubmit: true })
+    )
+    expect(resolveReassignLeadControlState(target, undefined, 'person-1' as Ref<Person>, true, false)).toEqual(
+      expect.objectContaining({ visible: true, canSelect: true, canSubmit: false })
+    )
+    expect(resolveReassignLeadControlState(target, undefined, 'person-2' as Ref<Person>, false, false)).toEqual(
+      expect.objectContaining({ visible: false, canSubmit: false })
+    )
+    for (const status of ['ndax:status:support:TakeoverRequested', 'ndax:status:support:HumanActive']) {
+      expect(
+        resolveReassignLeadControlState(
+          issue(status, 'person-1' as Ref<Person>),
+          undefined,
+          'person-2' as Ref<Person>,
+          true,
+          false
+        )
+      ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+    }
   })
 })

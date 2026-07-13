@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "Destek lideri",
     "AssignLead": "Temsilci ata",
+    "ReassignLead": "Temsilciyi yeniden ata",
     "AssignLeadPlaceholder": "Destek temsilcileri ve liderleri ara",
     "AssignLeadRequest": "Atama isteği",
     "AssignLeadRequestPending": "Atama isteği beklemede",

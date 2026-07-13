@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "Vedoucí podpory",
     "AssignLead": "Přiřadit agenta",
+    "ReassignLead": "Přeřadit agenta",
     "AssignLeadPlaceholder": "Hledat agenty podpory a vedoucí",
     "AssignLeadRequest": "Žádost o přiřazení",
     "AssignLeadRequestPending": "Žádost o přiřazení čeká",

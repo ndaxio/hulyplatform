@@ -23,6 +23,7 @@
   import {
     resolveAssignLeadControlState,
     resolveClaimSelfControlState,
+    resolveReassignLeadControlState,
     shouldShowSupportActionRequestState
   } from '../action-request'
 
@@ -41,6 +42,7 @@
   export let assignLeadSelection: Ref<Person> | null | undefined = undefined
   export let requestClaimSelf: () => Promise<void>
   export let requestAssignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
+  export let requestReassignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
 
   $: actionIssue = { ...issue, assignee }
   $: chrome = resolveTakeoverChromeState(actionIssue, projection)
@@ -58,6 +60,14 @@
     submitting
   )
   $: assignLead = resolveAssignLeadControlState(actionIssue, actionRequest, canAssignLead, submitting)
+  $: reassignLead = resolveReassignLeadControlState(
+    actionIssue,
+    actionRequest,
+    assignLeadSelection,
+    canAssignLead,
+    submitting
+  )
+  $: assigneeChange = assignLead.visible ? assignLead : reassignLead
 
   function stageLabel (stage: LiveSessionStage): IntlString {
     switch (stage) {
@@ -105,12 +115,16 @@
   }
 
   function requestLabel (): IntlString | undefined {
-    if (requestAction() === 'assign_assignee') {
+    if (requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') {
       if (submissionFailed) return customerSuccess.string.AssignLeadRequestFailed
-      if (assignLead.reconciled) return customerSuccess.string.AssignLeadConfirmed
-      if (assignLead.awaitingReconciliation) return customerSuccess.string.AssignLeadRequestAwaitingReconciliation
+      if (assigneeChange.reconciled) {
+        return customerSuccess.string.AssignLeadConfirmed
+      }
+      if (assigneeChange.awaitingReconciliation) {
+        return customerSuccess.string.AssignLeadRequestAwaitingReconciliation
+      }
 
-      switch (assignLead.requestState) {
+      switch (assigneeChange.requestState) {
         case 'pending':
           return customerSuccess.string.AssignLeadRequestPending
         case 'processing':
@@ -146,11 +160,11 @@
   }
 
   function requestLabelType (): StateType {
-    if (requestAction() === 'assign_assignee') {
-      if (assignLead.reconciled) return StateType.Positive
-      if (assignLead.awaitingReconciliation) return StateType.Ghost
+    if (requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') {
+      if (assigneeChange.reconciled) return StateType.Positive
+      if (assigneeChange.awaitingReconciliation) return StateType.Ghost
 
-      switch (assignLead.requestState) {
+      switch (assigneeChange.requestState) {
         case 'pending':
         case 'processing':
           return StateType.Primary
@@ -183,9 +197,9 @@
   }
 
   function requestTitleLabel (): IntlString {
-    return requestAction() === 'assign_assignee'
-      ? customerSuccess.string.AssignLeadRequest
-      : customerSuccess.string.ClaimRequest
+    if (requestAction() === 'reassign_assignee') return customerSuccess.string.ReassignLead
+    if (requestAction() === 'assign_assignee') return customerSuccess.string.AssignLeadRequest
+    return customerSuccess.string.ClaimRequest
   }
 
   function shouldShowRequestLabel (): boolean {
@@ -202,12 +216,18 @@
   }
 
   function handleAssignLeadChange (event: CustomEvent<Ref<Person> | null | undefined>): void {
-    if (!assignLead.canSubmit || event.detail == null) return
-    void requestAssignLead(event.detail)
+    if (event.detail == null) return
+    if (assignLead.visible && assignLead.canSubmit) {
+      void requestAssignLead(event.detail)
+    } else if (
+      resolveReassignLeadControlState(actionIssue, actionRequest, event.detail, canAssignLead, submitting).canSubmit
+    ) {
+      void requestReassignLead(event.detail)
+    }
   }
 </script>
 
-{#if chrome.stage !== 'other' || claimSelf.visible || assignLead.visible || shouldShowRequestLabel()}
+{#if chrome.stage !== 'other' || claimSelf.visible || assigneeChange.visible || shouldShowRequestLabel()}
   <section class="takeover-state" aria-labelledby="customer-success-takeover-state-heading">
     <div class="takeover-heading">
       <div class="heading-summary">
@@ -234,32 +254,35 @@
             }}
           />
         {/if}
-        {#if assignLead.visible && assignLeadCandidateQuery !== undefined}
+        {#if assigneeChange.visible && assignLeadCandidateQuery !== undefined}
           <div
             class="assign-lead"
             role="group"
             aria-labelledby="customer-success-assign-lead-label"
-            aria-describedby={requestAction() === 'assign_assignee' && requestLabel() !== undefined
+            aria-describedby={(requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') &&
+            requestLabel() !== undefined
               ? 'customer-success-assign-lead-status'
               : undefined}
-            aria-disabled={!assignLead.canSubmit}
-            aria-busy={assignLead.busy}
+            aria-disabled={!assigneeChange.canSelect}
+            aria-busy={assigneeChange.busy}
           >
             <span id="customer-success-assign-lead-label" class="sr-only">
-              <Label label={customerSuccess.string.AssignLead} />
+              <Label
+                label={reassignLead.visible ? customerSuccess.string.ReassignLead : customerSuccess.string.AssignLead}
+              />
             </span>
             <AssigneeBox
               id="customer-success-assign-lead-picker"
               docQuery={assignLeadCandidateQuery}
               categories={assignLeadCategories}
-              label={customerSuccess.string.AssignLead}
+              label={reassignLead.visible ? customerSuccess.string.ReassignLead : customerSuccess.string.AssignLead}
               placeholder={customerSuccess.string.AssignLeadPlaceholder}
               value={assignLeadSelection}
               allowDeselect={false}
               size="small"
               kind="regular"
               width="15rem"
-              readonly={!assignLead.canSubmit}
+              readonly={!assigneeChange.canSelect}
               showNavigate={false}
               justify="left"
               on:change={handleAssignLeadChange}
@@ -334,7 +357,9 @@
           <dt><Label label={requestTitleLabel()} /></dt>
           <dd
             class="state-tag"
-            id={requestAction() === 'assign_assignee' ? 'customer-success-assign-lead-status' : undefined}
+            id={requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee'
+              ? 'customer-success-assign-lead-status'
+              : undefined}
           >
             <StateTag label={requestLabelOrFallback()} type={requestLabelType()} />
           </dd>

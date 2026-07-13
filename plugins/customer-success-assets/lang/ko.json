@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "지원 리드",
     "AssignLead": "상담원 지정",
+    "ReassignLead": "상담원 재지정",
     "AssignLeadPlaceholder": "지원 상담원과 리드 검색",
     "AssignLeadRequest": "지정 요청",
     "AssignLeadRequestPending": "지정 요청 대기 중",

@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "サポート責任者",
     "AssignLead": "エージェントを割り当て",
+    "ReassignLead": "エージェントを再割り当て",
     "AssignLeadPlaceholder": "サポート担当者と責任者を検索",
     "AssignLeadRequest": "割り当て依頼",
     "AssignLeadRequestPending": "割り当て依頼保留中",

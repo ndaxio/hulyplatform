@@ -68,7 +68,7 @@ export interface ConversationBinding extends Doc {
   schemaVersion: number
 }
 
-export type SupportActionRequestAction = 'claim_self' | 'assign_assignee'
+export type SupportActionRequestAction = 'claim_self' | 'assign_assignee' | 'reassign_assignee'
 export type SupportActionRequestState = 'pending' | 'processing' | 'succeeded' | 'failed' | 'superseded'
 
 /** Human-created, system-consumed support action request in the internal projection space. */
@@ -237,7 +237,8 @@ const customerSuccess = plugin(customerSuccessId, {
     AssignLeadRequestAwaitingReconciliation: '' as IntlString,
     AssignLeadRequestFailed: '' as IntlString,
     AssignLeadRequestSuperseded: '' as IntlString,
-    AssignLeadConfirmed: '' as IntlString
+    AssignLeadConfirmed: '' as IntlString,
+    ReassignLead: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>

@@ -109,6 +109,10 @@ CSSC-15A adds a second deterministic id for lead assignment:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:assign_assignee:<requestedAssignee>:<expectedModifiedOn>`
 
+CSSC-15B adds the corresponding lead-only reassignment id:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:reassign_assignee:<requestedAssignee>:<expectedModifiedOn>`
+
 The browser creates it through `client.apply(requestId).notMatch(...)` guarded
 by the globally unique exact `_id`. Its reactive read subscription additionally
 requires the exact internal `space`, `issueId`, and `schemaVersion: 1`.
@@ -123,7 +127,7 @@ conflict evidence remains visible without blocking a newer-snapshot action.
 | `_id` | Deterministic id built from issue id, current account uuid, action, expected target person when the action needs one, and expected modified time. |
 | `space` | Exact internal projection space. |
 | `issueId` | Exact Huly support issue reference. |
-| `action` | `claim_self` or `assign_assignee`. |
+| `action` | `claim_self`, `assign_assignee`, or `reassign_assignee`. |
 | `requestedAssignee` | Huly Person the creator is requesting for claim/ack. |
 | `expectedStatus` | Exact issue status the request expects. |
 | `expectedAssignee` | Exact expected assignee, or null. |
@@ -180,8 +184,15 @@ forbids, to every human role in the space type.
 - for `claim_self`, the adapter independently verifies that the immutable
   creator maps to `requestedAssignee` and holds a support role;
 - for `assign_assignee`, the adapter requires a SupportLead creator and an
-  active requested Person present in the internal projection space's
+  exact match between the deterministic id's account segment and the immutable
+  Huly create-transaction creator; the creator must also remain in the internal
+  projection space's SupportLead roster. The requested target must be an
+  active Person present in the internal projection space's
   SupportAgent/SupportLead roster.
+- for `reassign_assignee`, the adapter applies the same creator and target
+  checks, requires an already-assigned conservative source status, rejects a
+  no-op target, and changes only the assignee. Takeover Requested and Human
+  Active tickets cannot be transferred through this action.
 
 The portal canonicalizes a legacy account/social-identity `Issue.assignee`
 through Huly's account-to-employee map before comparing it with the
@@ -224,11 +235,12 @@ The trusted adapter writer must:
 8. Consume `SupportActionRequest` only from the exact internal projection space.
    Derive creator identity from the persisted Huly transaction, verify role and
    target roster membership, verify expected status/assignee/modifiedOn, then
-   invoke the existing CAS claim/ack flow or the conservative lead-assign
+   invoke the existing CAS claim/ack flow or a conservative lead assignee
    mutation. Fresh pending requests never infer success from pre-existing issue
-   state; only an expired processing lease with a compatible immutable
-   unassigned snapshot and an adapter-owned `assignment_committed` marker
-   written atomically with the assignee CAS may resume durable progress.
+   state; only an expired processing lease with a compatible immutable snapshot
+   and the matching adapter-owned `assignment_committed` or
+   `reassignment_committed` marker written atomically with the assignee CAS may
+   resume durable progress.
 
 ## Ordering And Pagination
 

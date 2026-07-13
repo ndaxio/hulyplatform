@@ -187,6 +187,10 @@ conservative assignee mutations:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:assign_assignee:<requestedAssignee>:<expectedModifiedOn>`
 
+CSSC-15B adds a third request shape for lead-only reassignment:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:reassign_assignee:<requestedAssignee>:<expectedModifiedOn>`
+
 Creation is guarded by `client.apply(requestId).notMatch(...)` on the globally
 unique exact id. The reactive read additionally matches the internal space,
 issue id, and schema version. The browser does not call the adapter directly and
@@ -210,13 +214,21 @@ SupportLead membership is the only UI path that may render the lead-assignment
 picker. The picker filters only active Persons mapped from SupportAgent or
 SupportLead assignments in the internal projection space, but that filtering is
 advisory. The adapter independently requires the target to be active, hold a
-support role, and appear in that same internal projection roster.
+support role, and appear in that same internal projection roster. It also binds
+portal-shaped deterministic ids to the immutable create-transaction creator and
+requires that creator to remain in the internal SupportLead roster.
+
+Reassignment reuses the native picker only for already-assigned tickets in the
+conservative pre-live statuses. It is a pure assignee CAS from the exact prior
+Person to a different eligible Person. It is unavailable in Takeover Requested
+and Human Active, performs no status transition, and has no compliance override
+or force-transfer path.
 
 `SupportActionRequest.state` is advisory workflow state, not takeover truth.
 Pending, processing, failed, and superseded may be rendered reactively. Even
 `state: succeeded` means only that adapter-side processing completed; takeover
 success is still gated exclusively by reconciled `LiveSessionState` plus
-authoritative `Issue.status`. For `assign_assignee`, `state: succeeded` still
+authoritative `Issue.status`. For `assign_assignee` and `reassign_assignee`, `state: succeeded` still
 means only that processing completed; the portal treats success as pending until
 the reactive `Issue` snapshot shows the requested assignee on the current or a
 newer `modifiedOn`.

@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Demande de prise en charge remplacée",
     "SupportLead": "Responsable du soutien",
     "AssignLead": "Attribuer un agent",
+    "ReassignLead": "Réaffecter l'agent",
     "AssignLeadPlaceholder": "Rechercher des agents et responsables du soutien",
     "AssignLeadRequest": "Demande d'attribution",
     "AssignLeadRequestPending": "Demande d'attribution en attente",

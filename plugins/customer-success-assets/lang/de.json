@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "Teamleitung",
     "AssignLead": "Agent zuweisen",
+    "ReassignLead": "Agent neu zuweisen",
     "AssignLeadPlaceholder": "Support-Agenten und Teamleitungen suchen",
     "AssignLeadRequest": "Zuweisungsanfrage",
     "AssignLeadRequestPending": "Zuweisungsanfrage ausstehend",

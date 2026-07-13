@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "Responsable de soporte",
     "AssignLead": "Asignar agente",
+    "ReassignLead": "Reasignar agente",
     "AssignLeadPlaceholder": "Buscar agentes y responsables de soporte",
     "AssignLeadRequest": "Solicitud de asignación",
     "AssignLeadRequestPending": "Solicitud de asignación pendiente",

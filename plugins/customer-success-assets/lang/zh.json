@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "支持主管",
     "AssignLead": "分配客服",
+    "ReassignLead": "重新分配客服",
     "AssignLeadPlaceholder": "搜索支持客服和主管",
     "AssignLeadRequest": "分配请求",
     "AssignLeadRequestPending": "分配请求待处理",

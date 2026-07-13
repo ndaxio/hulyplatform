@@ -62,6 +62,7 @@
     "ClaimRequestSuperseded": "Claim request superseded",
     "SupportLead": "Руководитель поддержки",
     "AssignLead": "Назначить агента",
+    "ReassignLead": "Переназначить агента",
     "AssignLeadPlaceholder": "Найти агентов поддержки и руководителей",
     "AssignLeadRequest": "Запрос на назначение",
     "AssignLeadRequestPending": "Запрос на назначение в ожидании",
