@@ -108,13 +108,19 @@ describe('Customer Success application model', () => {
     )
     expect(modelSource).toMatch(/class TConversationEvent[\s\S]*?conversationId!: string/)
     expect(modelSource).toMatch(/class TConversationBinding[\s\S]*?conversationId!: string/)
-    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedAssignee!: Ref<Person>/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedAssignee\?: Ref<Person>/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?requestedStatus\?: Ref<IssueStatus>/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?deliveryId\?: string/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?message\?: Markup/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?contentDigest\?: string/)
+    expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?resultEventId\?: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?reasonCode\?: SupportActionRequest\['reasonCode'\]/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?reasonDetail\?: string/)
     expect(
       readFileSync(join(__dirname, '..', '..', '..', '..', 'plugins', 'customer-success', 'src', 'index.ts'), 'utf8')
-    ).toMatch(/SupportActionRequestAction =[\s\S]*?'resolve_case'[\s\S]*?'reopen_case'/)
+    ).toMatch(
+      /SupportActionRequestAction =[\s\S]*?'resolve_case'[\s\S]*?'reopen_case'[\s\S]*?'post_public_reply'[\s\S]*?'post_internal_note'/
+    )
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseId\?: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseExpiresAt\?: Timestamp/)
     expect(modelSource).toMatch(/class TLiveSessionState[\s\S]*?conversationId\?: string/)

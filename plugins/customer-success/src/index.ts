@@ -69,7 +69,14 @@ export interface ConversationBinding extends Doc {
 }
 
 export type SupportActionRequestAction =
-  'claim_self' | 'assign_assignee' | 'reassign_assignee' | 'transition_status' | 'resolve_case' | 'reopen_case'
+  | 'claim_self'
+  | 'assign_assignee'
+  | 'reassign_assignee'
+  | 'transition_status'
+  | 'resolve_case'
+  | 'reopen_case'
+  | 'post_public_reply'
+  | 'post_internal_note'
 export type SupportActionRequestState = 'pending' | 'processing' | 'succeeded' | 'failed' | 'superseded'
 export type SupportResolveReasonCode =
   'customer_confirmed' | 'request_completed' | 'information_provided' | 'duplicate_request'
@@ -81,15 +88,19 @@ export type SupportLifecycleReasonCode = SupportResolveReasonCode | SupportReope
 export interface SupportActionRequest extends Doc {
   issueId: Ref<Issue>
   action: SupportActionRequestAction
-  requestedAssignee: Ref<Person>
+  requestedAssignee?: Ref<Person>
   requestedStatus?: Ref<IssueStatus>
   expectedStatus: Ref<IssueStatus>
   expectedAssignee: Ref<Person> | null
   expectedModifiedOn: Timestamp
+  deliveryId?: string
+  message?: Markup
+  contentDigest?: string
   reasonCode?: SupportLifecycleReasonCode
   reasonDetail?: string
   state: SupportActionRequestState
   resultCode?: string
+  resultEventId?: string
   errorCode?: string
   processingLeaseId?: string
   processingLeaseExpiresAt?: Timestamp
@@ -285,7 +296,17 @@ const customerSuccess = plugin(customerSuccessId, {
     TerminalRequestAwaitingReconciliation: '' as IntlString,
     TerminalRequestFailed: '' as IntlString,
     TerminalRequestSuperseded: '' as IntlString,
-    TerminalRequestConfirmed: '' as IntlString
+    TerminalRequestConfirmed: '' as IntlString,
+    PublicReply: '' as IntlString,
+    PublicReplyPlaceholder: '' as IntlString,
+    PostPublicReply: '' as IntlString,
+    InternalNote: '' as IntlString,
+    InternalNotePlaceholder: '' as IntlString,
+    PostInternalNote: '' as IntlString,
+    ConversationComposerSending: '' as IntlString,
+    ConversationComposerDelivered: '' as IntlString,
+    ConversationComposerSuppressed: '' as IntlString,
+    ConversationComposerFailed: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>

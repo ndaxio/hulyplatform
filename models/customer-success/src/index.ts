@@ -144,7 +144,7 @@ export class TSupportActionRequest extends TDoc implements SupportActionRequest 
 
   @Prop(TypeRef(contact.class.Person), getEmbeddedLabel('Requested assignee'))
   @Index(IndexKind.Indexed)
-    requestedAssignee!: Ref<Person>
+    requestedAssignee?: Ref<Person>
 
   @Prop(TypeRef(tracker.class.IssueStatus), getEmbeddedLabel('Requested status'))
     requestedStatus?: Ref<IssueStatus>
@@ -159,6 +159,16 @@ export class TSupportActionRequest extends TDoc implements SupportActionRequest 
   @Index(IndexKind.Indexed)
     expectedModifiedOn!: Timestamp
 
+  @Prop(TypeString(), getEmbeddedLabel('Delivery id'))
+  @Index(IndexKind.Indexed)
+    deliveryId?: string
+
+  @Prop(TypeMarkup(), getEmbeddedLabel('Message'))
+    message?: Markup
+
+  @Prop(TypeString(), getEmbeddedLabel('Content digest'))
+    contentDigest?: string
+
   @Prop(TypeString(), getEmbeddedLabel('Reason code'))
     reasonCode?: SupportActionRequest['reasonCode']
 
@@ -170,6 +180,9 @@ export class TSupportActionRequest extends TDoc implements SupportActionRequest 
 
   @Prop(TypeString(), getEmbeddedLabel('Result code'))
     resultCode?: string
+
+  @Prop(TypeString(), getEmbeddedLabel('Result event id'))
+    resultEventId?: string
 
   @Prop(TypeString(), getEmbeddedLabel('Error code'))
     errorCode?: string

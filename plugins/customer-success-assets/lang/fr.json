@@ -108,6 +108,16 @@
     "TerminalRequestAwaitingReconciliation": "En attente du rapprochement du cycle de vie",
     "TerminalRequestFailed": "Échec de la demande de cycle de vie",
     "TerminalRequestSuperseded": "Demande de cycle de vie remplacée",
-    "TerminalRequestConfirmed": "Changement de cycle de vie confirmé"
+    "TerminalRequestConfirmed": "Changement de cycle de vie confirmé",
+    "PublicReply": "Réponse publique",
+    "PublicReplyPlaceholder": "Rédiger une réponse publique",
+    "PostPublicReply": "Publier la réponse",
+    "InternalNote": "Note interne",
+    "InternalNotePlaceholder": "Rédiger une note interne",
+    "PostInternalNote": "Publier la note",
+    "ConversationComposerSending": "Envoi en cours",
+    "ConversationComposerDelivered": "Envoyé",
+    "ConversationComposerSuppressed": "Supprimé",
+    "ConversationComposerFailed": "Échec"
   }
 }

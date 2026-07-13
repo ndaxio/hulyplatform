@@ -108,6 +108,16 @@
     "TerminalRequestAwaitingReconciliation": "等待生命周期对账",
     "TerminalRequestFailed": "生命周期请求失败",
     "TerminalRequestSuperseded": "生命周期请求已被替代",
-    "TerminalRequestConfirmed": "生命周期变更已确认"
+    "TerminalRequestConfirmed": "生命周期变更已确认",
+    "PublicReply": "Public reply",
+    "PublicReplyPlaceholder": "Write a public reply",
+    "PostPublicReply": "Post reply",
+    "InternalNote": "Internal note",
+    "InternalNotePlaceholder": "Write an internal note",
+    "PostInternalNote": "Post note",
+    "ConversationComposerSending": "Sending",
+    "ConversationComposerDelivered": "Delivered",
+    "ConversationComposerSuppressed": "Suppressed",
+    "ConversationComposerFailed": "Failed"
   }
 }

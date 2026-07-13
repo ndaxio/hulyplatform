@@ -121,6 +121,10 @@ CSSC-15D reserves distinct terminal lifecycle ids:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:<resolve_case|reopen_case>:<requestedStatus>:<reasonCode>:<expectedModifiedOn>`
 
+CSSC-16 adds separate native composer ids for public replies and internal notes:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:<post_public_reply|post_internal_note>:<deliveryId>:<expectedModifiedOn>`
+
 Their source/target matrix, reason allowlists, role rules, recovery marker, and
 orchestrator behavior are normative in `TERMINAL-LIFECYCLE-CONTRACT.md`.
 Closed and Escalated have no schema-v1 browser transition.
@@ -143,16 +147,20 @@ duplicate submits.
 | `_id` | Deterministic id built from issue id, current account uuid, action, expected target person when the action needs one, and expected modified time. |
 | `space` | Exact internal projection space. |
 | `issueId` | Exact Huly support issue reference. |
-| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, `transition_status`, `resolve_case`, or `reopen_case`. |
-| `requestedAssignee` | Huly Person requested for claim/assignment actions; for status and terminal actions, the unchanged canonical assignee bound to the request snapshot. |
-| `requestedStatus` | Required for `transition_status`, `resolve_case`, and `reopen_case`; waiting targets for `transition_status`, `Resolved` or `Reopened` for terminal actions. |
+| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, `transition_status`, `resolve_case`, `reopen_case`, `post_public_reply`, or `post_internal_note`. |
+| `requestedAssignee` | Huly Person requested for claim/assignment actions; for status/terminal actions the unchanged canonical assignee bound to the request snapshot; absent for composer actions, whose creator is proven from the immutable Huly create transaction and exact account-bound request id. |
+| `requestedStatus` | Required for `transition_status`, `resolve_case`, and `reopen_case`; absent for claim/assignment/composer actions. |
 | `expectedStatus` | Exact issue status the request expects. |
 | `expectedAssignee` | Exact expected assignee, or null. |
 | `expectedModifiedOn` | Exact issue `modifiedOn` timestamp the browser observed. |
+| `deliveryId` | Stable per-draft browser delivery key in the exact `ndax:support:delivery:<issueId>:<creatorAccount>:<action>:<nonce>` namespace. Composer retries reuse it until trusted success, suppression, terminal failure, or draft reset. Absent for non-composer requests. |
+| `message` | Text-only `Markup` payload. Composer surfaces create it in browser memory only; no raw `ChatMessage` or comment writes are allowed. |
+| `contentDigest` | Lowercase 64-character SHA-256 digest of the normalized text-only composer payload; absent for non-composer requests. |
 | `reasonCode` | Required controlled lifecycle reason for `resolve_case` and `reopen_case`; absent for other actions. |
 | `reasonDetail` | Optional trimmed plain text for terminal actions only. Reject C0/C1 controls except normalized LF, bidi overrides/isolates, and Unicode line/paragraph separators. |
 | `state` | `pending`, `processing`, `succeeded`, `failed`, or `superseded`. |
-| `resultCode` / `errorCode` | Optional system-written outcome codes. |
+| `resultCode` / `errorCode` | Optional system-written outcome codes. Composer success maps to delivered on `sent`/`already_sent` and suppressed on `suppressed`; there is no separate top-level suppressed state. |
+| `resultEventId` | Optional trusted projection event id written by the adapter/orchestrator for delivered composer actions. |
 | `processingLeaseId` | Opaque adapter-written ownership token. Browser clients must not set or trust it. |
 | `processingLeaseExpiresAt` | Adapter-written lease expiry used to recover abandoned processing safely. |
 | `processedAt` | Optional system-written processing time. |
@@ -218,6 +226,17 @@ forbids, to every human role in the space type.
   Human Active to Waiting on Customer or Waiting on Internal. Escalated,
   terminal, reopen, reverse, bot-ownership, and takeover transitions are not
   accepted by this action.
+- for `post_public_reply`, the browser still creates only a
+  `SupportActionRequest` in the internal projection space. The immutable
+  creator must be the current confirmed human owner, and the current issue/live
+  session proof must support `Human Active`, `Waiting on Customer`, or
+  `Waiting on Internal` without relying on adapter tokens or direct HTTP
+  delivery.
+- for `post_internal_note`, the browser again creates only a
+  `SupportActionRequest` in the internal projection space. The immutable
+  creator must remain an active SupportAgent or SupportLead roster member on a
+  non-terminal support ticket. Restricted notes, attachments, link previews,
+  and composer mode dropdowns are outside schema v1.
 - for `resolve_case`, Human Active requires a current acknowledged live-session
   projection. Waiting on Customer and Waiting on Internal require a fresh
   issue-bound projection whose source status, observed time, and projected

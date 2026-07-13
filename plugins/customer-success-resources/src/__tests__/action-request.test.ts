@@ -17,10 +17,15 @@ import {
   buildSupportActionRequestHydrationQuery,
   buildAssignLeadCandidateQuery,
   canonicalSupportAssignee,
+  buildConversationComposerContentDigest,
   buildSupportActionRequestQuery,
   claimSelfSupportActionRequestId,
+  conversationMessageDeliveryId,
+  conversationMessageSupportActionRequestId,
   isTerminalReasonAllowed,
   isSupportLeadRoleMember,
+  normalizeConversationComposerMessage,
+  resolveConversationComposerControlState,
   resolveAssignLeadControlState,
   resolveReassignLeadControlState,
   resolveStatusTransitionControlState,
@@ -29,7 +34,9 @@ import {
   isSupportActionRoleMember,
   resolveClaimSelfControlState,
   selectHydratedSupportActionRequestId,
+  shouldClearConversationComposerDraft,
   submitAssignAssigneeSupportActionRequest,
+  submitConversationMessageSupportActionRequest,
   submitReassignAssigneeSupportActionRequest,
   submitTransitionStatusSupportActionRequest,
   submitTerminalSupportActionRequest,
@@ -69,6 +76,9 @@ function actionRequest (overrides: Partial<SupportActionRequest> = {}): SupportA
     expectedStatus: 'ndax:status:support:TakeoverRequested' as Ref<IssueStatus>,
     expectedAssignee: null,
     expectedModifiedOn: 100,
+    deliveryId: 'delivery-1',
+    message: 'hello world',
+    contentDigest: 'digest-1',
     state: 'pending',
     idempotencyKey: 'request-1',
     schemaVersion: 1,
@@ -165,6 +175,56 @@ describe('Customer Success support action request helpers', () => {
     })
   })
 
+  it('builds namespaced delivery ids, rejects invalid nonces, and binds request ids to the full delivery id', () => {
+    const publicDeliveryId = conversationMessageDeliveryId(
+      'issue-1' as Ref<Issue>,
+      'account-1' as AccountUuid,
+      'post_public_reply',
+      'delivery-public-1'
+    )
+    const internalDeliveryId = conversationMessageDeliveryId(
+      'issue-1' as Ref<Issue>,
+      'account-1' as AccountUuid,
+      'post_internal_note',
+      'delivery-internal-1'
+    )
+
+    expect(publicDeliveryId).toBe('ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1')
+    expect(internalDeliveryId).toBe('ndax:support:delivery:issue-1:account-1:post_internal_note:delivery-internal-1')
+    expect(() => {
+      conversationMessageDeliveryId(
+        'issue-1' as Ref<Issue>,
+        'account-1' as AccountUuid,
+        'post_public_reply',
+        'delivery:public:1'
+      )
+    }).toThrow('conversation_composer_delivery_id_invalid')
+
+    expect(
+      conversationMessageSupportActionRequestId(
+        'issue-1' as Ref<Issue>,
+        'account-1' as AccountUuid,
+        'post_public_reply',
+        publicDeliveryId,
+        100
+      )
+    ).toBe(
+      'ndax:support:action-request:issue-1:account-1:post_public_reply:ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1:100'
+    )
+
+    expect(
+      conversationMessageSupportActionRequestId(
+        'issue-1' as Ref<Issue>,
+        'account-1' as AccountUuid,
+        'post_internal_note',
+        internalDeliveryId,
+        100
+      )
+    ).toBe(
+      'ndax:support:action-request:issue-1:account-1:post_internal_note:ndax:support:delivery:issue-1:account-1:post_internal_note:delivery-internal-1:100'
+    )
+  })
+
   it('selects the latest relevant support request deterministically after the issue snapshot advances', () => {
     expect(
       selectHydratedSupportActionRequestId(
@@ -207,6 +267,27 @@ describe('Customer Success support action request helpers', () => {
       )
     ).toBe('ndax:support:action-request:issue-1:account-1:assign_assignee:person-2:100')
     expect(selectHydratedSupportActionRequestId([], issue('ndax:status:support:NeedsHuman'))).toBeUndefined()
+  })
+
+  it('never hydrates native composer requests into takeover/status action state', () => {
+    expect(
+      selectHydratedSupportActionRequestId(
+        [
+          actionRequest({
+            _id: 'ndax:support:action-request:issue-1:account-1:post_public_reply:delivery-public-1:100' as Ref<SupportActionRequest>,
+            action: 'post_public_reply',
+            requestedAssignee: 'person-1' as Ref<Person>,
+            expectedStatus: 'ndax:status:support:WaitingOnCustomer' as Ref<IssueStatus>,
+            expectedAssignee: 'person-1' as Ref<Person>,
+            state: 'succeeded',
+            resultCode: 'sent',
+            resultEventId: 'evt-1',
+            modifiedOn: 104
+          })
+        ],
+        issue('ndax:status:support:WaitingOnCustomer', 'person-1' as Ref<Person>, 105)
+      )
+    ).toBeUndefined()
   })
 
   it('creates assign-assignee requests through exact-id CAS guarded apply().notMatch()', async () => {
@@ -288,6 +369,67 @@ describe('Customer Success support action request helpers', () => {
       }),
       'ndax:support:action-request:issue-1:account-1:claim_self:100'
     )
+    const request = createDoc.mock.calls[0][2]
+    for (const field of ['deliveryId', 'message', 'contentDigest']) {
+      expect(request).not.toHaveProperty(field)
+    }
+    expect(commit).toHaveBeenCalled()
+  })
+
+  it('creates native composer requests with immutable creator and payload binding', async () => {
+    const notMatch = jest.fn().mockReturnThis()
+    const createDoc = jest.fn().mockResolvedValue('request-id')
+    const commit = jest.fn().mockResolvedValue({ result: true, time: 3, serverTime: 2 })
+    const apply = jest.fn().mockReturnValue({ notMatch, createDoc, commit })
+
+    const deliveryId = conversationMessageDeliveryId(
+      'issue-1' as Ref<Issue>,
+      'account-1' as AccountUuid,
+      'post_public_reply',
+      'delivery-public-1'
+    )
+    const digest = await buildConversationComposerContentDigest('Hello\ncustomer')
+    const result = await submitConversationMessageSupportActionRequest(
+      { apply } as any,
+      'ndax:support:projection:internal' as Ref<ConversationProjectionSpace>,
+      issue('ndax:status:support:WaitingOnCustomer', 'person-9' as Ref<Person>),
+      'account-1' as AccountUuid,
+      'post_public_reply',
+      deliveryId,
+      '  Hello\r\ncustomer  '
+    )
+
+    expect(result.requestId).toBe(
+      'ndax:support:action-request:issue-1:account-1:post_public_reply:ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1:100'
+    )
+    expect(apply).toHaveBeenCalledWith(
+      'ndax:support:action-request:issue-1:account-1:post_public_reply:ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1:100',
+      'customer-success-post-public-reply'
+    )
+    expect(notMatch).toHaveBeenCalledWith(customerSuccess.class.SupportActionRequest, {
+      _id: 'ndax:support:action-request:issue-1:account-1:post_public_reply:ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1:100'
+    })
+    expect(createDoc).toHaveBeenCalledWith(
+      customerSuccess.class.SupportActionRequest,
+      'ndax:support:projection:internal',
+      expect.objectContaining({
+        issueId: 'issue-1',
+        action: 'post_public_reply',
+        expectedStatus: 'ndax:status:support:WaitingOnCustomer',
+        expectedAssignee: 'person-9',
+        expectedModifiedOn: 100,
+        deliveryId,
+        message: 'Hello\ncustomer',
+        contentDigest: digest,
+        state: 'pending',
+        idempotencyKey:
+          'ndax:support:action-request:issue-1:account-1:post_public_reply:ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1:100',
+        schemaVersion: 1
+      }),
+      'ndax:support:action-request:issue-1:account-1:post_public_reply:ndax:support:delivery:issue-1:account-1:post_public_reply:delivery-public-1:100'
+    )
+    const request = createDoc.mock.calls[0][2]
+    expect(request).not.toHaveProperty('requestedAssignee')
     expect(commit).toHaveBeenCalled()
   })
 
@@ -489,6 +631,242 @@ describe('Customer Success support action request helpers', () => {
     ).toEqual(expect.objectContaining({ requestState: 'superseded', visible: true, canSubmit: true, busy: false }))
   })
 
+  it('builds deterministic 64-char SHA-256 composer content digests from normalized plain text', async () => {
+    const digest = await buildConversationComposerContentDigest('Hello\nworld')
+
+    expect(digest).toBe('46e0ea795802f17d0b340983ca7d7068c94d7d9172ee4daea37a1ab1168649ec')
+    expect(digest).toHaveLength(64)
+    expect(await buildConversationComposerContentDigest('Hello\nworld')).toBe(digest)
+    expect(await buildConversationComposerContentDigest('Hello\nworld!')).not.toBe(digest)
+  })
+
+  it('rejects oversized composer messages above the 10000 character ceiling', () => {
+    expect(() => normalizeConversationComposerMessage('x'.repeat(10000))).not.toThrow()
+    expect(() => normalizeConversationComposerMessage('x'.repeat(10001))).toThrow('conversation_composer_too_long')
+  })
+
+  it('keeps public reply and internal note eligibility separate and fail-closed', () => {
+    const humanActiveOwner = issue('ndax:status:support:HumanActive', 'person-1' as Ref<Person>)
+    const waitingOwner = issue('ndax:status:support:WaitingOnCustomer', 'person-1' as Ref<Person>)
+    const confirmed = { ...resolveTakeoverChromeState(humanActiveOwner), confirmed: true }
+    const waitingProjection = {
+      ...resolveTakeoverChromeState(waitingOwner),
+      projectionCurrent: true,
+      claimOwner: 'person-1' as Ref<Person>
+    }
+
+    expect(
+      resolveConversationComposerControlState(
+        'post_public_reply',
+        humanActiveOwner,
+        confirmed,
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: true, enabled: true, canSubmit: true, status: 'idle' }))
+
+    expect(
+      resolveConversationComposerControlState(
+        'post_public_reply',
+        waitingOwner,
+        waitingProjection,
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: true, enabled: true, canSubmit: true, status: 'idle' }))
+
+    expect(
+      resolveConversationComposerControlState(
+        'post_public_reply',
+        waitingOwner,
+        { ...waitingProjection, projectionCurrent: false },
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: true, enabled: false, canSubmit: false }))
+
+    expect(
+      resolveConversationComposerControlState(
+        'post_internal_note',
+        issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>),
+        resolveTakeoverChromeState(issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>)),
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: true, enabled: true, canSubmit: true, status: 'idle' }))
+
+    expect(
+      resolveConversationComposerControlState(
+        'post_internal_note',
+        issue('ndax:status:support:Resolved', 'person-9' as Ref<Person>),
+        resolveTakeoverChromeState(issue('ndax:status:support:Resolved', 'person-9' as Ref<Person>)),
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+  })
+
+  it('maps native composer state into the five UI outcomes', () => {
+    const baseIssue = issue('ndax:status:support:WaitingOnCustomer', 'person-1' as Ref<Person>)
+    const proof = {
+      ...resolveTakeoverChromeState(baseIssue),
+      projectionCurrent: true,
+      claimOwner: 'person-1' as Ref<Person>
+    }
+
+    expect(
+      resolveConversationComposerControlState(
+        'post_public_reply',
+        baseIssue,
+        proof,
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      ).status
+    ).toBe('idle')
+    expect(
+      resolveConversationComposerControlState(
+        'post_public_reply',
+        baseIssue,
+        proof,
+        actionRequest({ action: 'post_public_reply', state: 'pending' }),
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      ).status
+    ).toBe('sending')
+    const deliveredPublic = resolveConversationComposerControlState(
+      'post_public_reply',
+      baseIssue,
+      proof,
+      actionRequest({ action: 'post_public_reply', state: 'succeeded', resultCode: 'sent', resultEventId: 'evt-1' }),
+      'person-1' as Ref<Person>,
+      true,
+      true,
+      false,
+      false
+    )
+    expect(deliveredPublic.status).toBe('delivered')
+    expect(deliveredPublic.canSubmit).toBe(false)
+    expect(
+      resolveConversationComposerControlState(
+        'post_internal_note',
+        issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>),
+        resolveTakeoverChromeState(issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>)),
+        actionRequest({
+          action: 'post_internal_note',
+          state: 'succeeded',
+          resultCode: 'recorded',
+          resultEventId: 'evt-note-1'
+        }),
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      ).status
+    ).toBe('delivered')
+    expect(
+      resolveConversationComposerControlState(
+        'post_internal_note',
+        issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>),
+        resolveTakeoverChromeState(issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>)),
+        actionRequest({ action: 'post_internal_note', state: 'succeeded', resultCode: 'suppressed' }),
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      ).status
+    ).toBe('suppressed')
+    expect(
+      resolveConversationComposerControlState(
+        'post_internal_note',
+        issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>),
+        resolveTakeoverChromeState(issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>)),
+        actionRequest({ action: 'post_internal_note', state: 'failed' }),
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      ).status
+    ).toBe('failed')
+    expect(
+      resolveConversationComposerControlState(
+        'post_internal_note',
+        issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>),
+        resolveTakeoverChromeState(issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>)),
+        actionRequest({ action: 'post_internal_note', state: 'failed' }),
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      ).canSubmit
+    ).toBe(true)
+  })
+
+  it('clears composer drafts only after trusted delivery or suppression reconciliation', () => {
+    expect(
+      shouldClearConversationComposerDraft(
+        actionRequest({ action: 'post_public_reply', state: 'succeeded', resultCode: 'sent', resultEventId: 'evt-1' }),
+        false
+      )
+    ).toBe(false)
+    expect(
+      shouldClearConversationComposerDraft(
+        actionRequest({ action: 'post_public_reply', state: 'succeeded', resultCode: 'sent', resultEventId: 'evt-1' }),
+        true
+      )
+    ).toBe(true)
+    expect(
+      shouldClearConversationComposerDraft(
+        actionRequest({
+          action: 'post_internal_note',
+          state: 'succeeded',
+          resultCode: 'already_recorded',
+          resultEventId: 'evt-note-1'
+        }),
+        true
+      )
+    ).toBe(true)
+    expect(
+      shouldClearConversationComposerDraft(
+        actionRequest({ action: 'post_internal_note', state: 'succeeded', resultCode: 'suppressed' }),
+        false
+      )
+    ).toBe(true)
+    expect(
+      shouldClearConversationComposerDraft(actionRequest({ action: 'post_internal_note', state: 'failed' }), false)
+    ).toBe(false)
+  })
+
   it('keeps request outcome state visible after control eligibility changes without exposing it to unauthorized viewers', () => {
     expect(shouldShowSupportActionRequestState('claim_self', true, true, false)).toBe(true)
     expect(shouldShowSupportActionRequestState('claim_self', true, false, true)).toBe(false)
@@ -498,6 +876,8 @@ describe('Customer Success support action request helpers', () => {
     expect(shouldShowSupportActionRequestState('reassign_assignee', true, true, true)).toBe(true)
     expect(shouldShowSupportActionRequestState('transition_status', true, true, false)).toBe(true)
     expect(shouldShowSupportActionRequestState('transition_status', true, false, true)).toBe(false)
+    expect(shouldShowSupportActionRequestState('post_public_reply', true, true, true)).toBe(false)
+    expect(shouldShowSupportActionRequestState('post_internal_note', true, true, true)).toBe(false)
     expect(shouldShowSupportActionRequestState(undefined, true, true, true)).toBe(false)
   })
 

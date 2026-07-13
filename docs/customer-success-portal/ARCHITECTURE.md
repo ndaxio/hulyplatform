@@ -252,6 +252,17 @@ observation time still reconcile with the authoritative issue snapshot. The
 button may remain present for context, but submit stays disabled and the dialog
 surfaces stale proof rather than inventing success.
 
+CSSC-16 keeps the same boundary and adds two native text-only composers under
+the transcript: Public reply and Internal note. Both surfaces still create only
+authenticated `SupportActionRequest` docs in the protected internal projection
+space. No adapter token, service token, raw `ChatMessage`/comment write, or
+direct HTTP delivery path is introduced. Public reply is owner-only and
+requires current live-session or waiting-state proof. Internal note is limited
+to active SupportAgent/SupportLead roster members on non-terminal support
+tickets. Each draft receives a stable in-memory `deliveryId`; retries preserve
+that id until trusted sent/already-sent event reconciliation or explicit
+suppression clears the draft.
+
 The controls remain hidden until the adapter and orchestrator prerequisites in
 the lifecycle contract are present: support tickets cannot use the generic
 status route, lifecycle projections are monotonic, bot mirroring cannot erase a

@@ -20,6 +20,7 @@ import type {
   CommitResult,
   DocumentQuery,
   Hierarchy,
+  Markup,
   Ref,
   Role,
   RolesAssignment,
@@ -50,11 +51,29 @@ const assignLeadSourceStatuses = new Set<Ref<IssueStatus>>([
 
 export const supportResolvedStatus = 'ndax:status:support:Resolved' as Ref<IssueStatus>
 export const supportReopenedStatus = 'ndax:status:support:Reopened' as Ref<IssueStatus>
+const supportClosedStatus = 'ndax:status:support:Closed' as Ref<IssueStatus>
 const supportHumanActiveStatus = 'ndax:status:support:HumanActive' as Ref<IssueStatus>
 const resolveCaseSourceStatuses = new Set<Ref<IssueStatus>>([
   supportHumanActiveStatus,
   'ndax:status:support:WaitingOnCustomer' as Ref<IssueStatus>,
   'ndax:status:support:WaitingOnInternal' as Ref<IssueStatus>
+])
+const publicReplySourceStatuses = new Set<Ref<IssueStatus>>([
+  supportHumanActiveStatus,
+  'ndax:status:support:WaitingOnCustomer' as Ref<IssueStatus>,
+  'ndax:status:support:WaitingOnInternal' as Ref<IssueStatus>
+])
+const nonTerminalSupportStatuses = new Set<Ref<IssueStatus>>([
+  'ndax:status:support:BotActive' as Ref<IssueStatus>,
+  'ndax:status:support:NeedsHuman' as Ref<IssueStatus>,
+  'ndax:status:support:Shadowing' as Ref<IssueStatus>,
+  'ndax:status:support:TakeoverRequested' as Ref<IssueStatus>,
+  supportHumanActiveStatus,
+  'ndax:status:support:WaitingOnCustomer' as Ref<IssueStatus>,
+  'ndax:status:support:WaitingOnInternal' as Ref<IssueStatus>,
+  supportReopenedStatus,
+  'ndax:status:support:Escalated' as Ref<IssueStatus>,
+  tracker.status.Backlog as Ref<IssueStatus>
 ])
 
 export const resolveCaseReasonCodes: SupportResolveReasonCode[] = [
@@ -103,15 +122,25 @@ export interface StatusTransitionControlState {
 }
 
 export type TerminalAction = 'resolve_case' | 'reopen_case'
+export type ConversationComposerAction = 'post_public_reply' | 'post_internal_note'
+export type ConversationComposerUiState = 'idle' | 'sending' | 'delivered' | 'suppressed' | 'failed'
+export const conversationComposerMessageMaxLength = 10000
+
+export interface ConversationComposerControlState {
+  visible: boolean
+  enabled: boolean
+  canSubmit: boolean
+  busy: boolean
+  status: ConversationComposerUiState
+  requestState?: SupportActionRequestState
+}
 
 export function isTerminalReasonAllowed (
   action: TerminalAction,
   reasonCode: SupportLifecycleReasonCode | undefined
 ): reasonCode is SupportLifecycleReasonCode {
   if (reasonCode === undefined) return false
-  return action === 'resolve_case'
-    ? resolveCaseReasons.has(reasonCode)
-    : reopenCaseReasons.has(reasonCode)
+  return action === 'resolve_case' ? resolveCaseReasons.has(reasonCode) : reopenCaseReasons.has(reasonCode)
 }
 
 export interface TerminalActionControlState extends StatusTransitionControlState {
@@ -195,6 +224,66 @@ export function terminalSupportActionRequestId (
   expectedModifiedOn: Timestamp
 ): Ref<SupportActionRequest> {
   return `ndax:support:action-request:${issueId}:${currentAccountUuid}:${action}:${targetStatus}:${reasonCode}:${expectedModifiedOn}` as Ref<SupportActionRequest>
+}
+
+export function conversationMessageSupportActionRequestId (
+  issueId: Ref<Issue>,
+  currentAccountUuid: AccountUuid,
+  action: ConversationComposerAction,
+  deliveryId: string,
+  expectedModifiedOn: Timestamp
+): Ref<SupportActionRequest> {
+  return `ndax:support:action-request:${issueId}:${currentAccountUuid}:${action}:${deliveryId}:${expectedModifiedOn}` as Ref<SupportActionRequest>
+}
+
+export function conversationMessageDeliveryId (
+  issueId: Ref<Issue>,
+  currentAccountUuid: AccountUuid,
+  action: ConversationComposerAction,
+  clientDeliveryId: string
+): string {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(clientDeliveryId)) {
+    throw new Error('conversation_composer_delivery_id_invalid')
+  }
+  return `ndax:support:delivery:${issueId}:${currentAccountUuid}:${action}:${clientDeliveryId}`
+}
+
+export function normalizeConversationComposerMessage (message: string): Markup {
+  const normalized = message
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ ]+$/g, ''))
+    .join('\n')
+    .trim()
+
+  const containsDisallowedCharacter = Array.from(normalized).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return (
+      (codePoint >= 0 && codePoint <= 31 && codePoint !== 10) ||
+      (codePoint >= 127 && codePoint <= 159) ||
+      codePoint === 0x2028 ||
+      codePoint === 0x2029 ||
+      (codePoint >= 0x202a && codePoint <= 0x202e) ||
+      (codePoint >= 0x2066 && codePoint <= 0x2069)
+    )
+  })
+  if (containsDisallowedCharacter) {
+    throw new Error('conversation_composer_not_plain_text')
+  }
+  if (normalized.length === 0) {
+    throw new Error('conversation_composer_empty')
+  }
+  if (normalized.length > conversationComposerMessageMaxLength) {
+    throw new Error('conversation_composer_too_long')
+  }
+  return normalized
+}
+
+export async function buildConversationComposerContentDigest (message: Markup): Promise<string> {
+  const subtle = globalThis.crypto?.subtle
+  if (subtle === undefined) throw new Error('conversation_composer_digest_unavailable')
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(String(message)))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 export function normalizeTerminalReasonDetail (detail: string): string | undefined {
@@ -295,6 +384,7 @@ export function selectHydratedSupportActionRequestId (
   return [...requests]
     .filter((request) => {
       if (request.schemaVersion !== 1) return false
+      if (request.action === 'post_public_reply' || request.action === 'post_internal_note') return false
       if (request.action === 'resolve_case' || request.action === 'reopen_case') {
         if (request.state !== 'succeeded') {
           return (
@@ -500,6 +590,46 @@ export async function submitTerminalSupportActionRequest (
   }
 
   const ops = client.apply(requestId, `customer-success-${action.replace('_', '-')}`)
+  ops.notMatch(customerSuccess.class.SupportActionRequest, { _id: requestId })
+  await ops.createDoc(customerSuccess.class.SupportActionRequest, internalSpaceId, request, requestId)
+  const committed = await ops.commit()
+
+  return { requestId, committed }
+}
+
+export async function submitConversationMessageSupportActionRequest (
+  client: Pick<TxOperations, 'apply'>,
+  internalSpaceId: Ref<ConversationProjectionSpace>,
+  issue: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
+  currentAccountUuid: AccountUuid,
+  action: ConversationComposerAction,
+  deliveryId: string,
+  message: string
+): Promise<{ requestId: Ref<SupportActionRequest>, committed: CommitResult }> {
+  const normalizedMessage = normalizeConversationComposerMessage(message)
+  const requestId = conversationMessageSupportActionRequestId(
+    issue._id,
+    currentAccountUuid,
+    action,
+    deliveryId,
+    issue.modifiedOn
+  )
+  const request = {
+    issueId: issue._id,
+    action,
+    expectedStatus: issue.status,
+    expectedAssignee: issue.assignee,
+    expectedModifiedOn: issue.modifiedOn,
+    deliveryId,
+    message: normalizedMessage,
+    contentDigest: await buildConversationComposerContentDigest(normalizedMessage),
+    state: 'pending' as const,
+    idempotencyKey: requestId,
+    schemaVersion: 1
+  }
+
+  const suffix = action === 'post_public_reply' ? 'post-public-reply' : 'post-internal-note'
+  const ops = client.apply(requestId, `customer-success-${suffix}`)
   ops.notMatch(customerSuccess.class.SupportActionRequest, { _id: requestId })
   await ops.createDoc(customerSuccess.class.SupportActionRequest, internalSpaceId, request, requestId)
   const committed = await ops.commit()
@@ -713,11 +843,9 @@ export function resolveTerminalActionControlState (
     issue.assignee === currentEmployee
   const resolveProofCurrent =
     ownerCanResolve &&
-    (
-      issue.status === supportHumanActiveStatus
-        ? takeover.confirmed
-        : takeover.projectionCurrent && takeover.claimOwner === issue.assignee
-    )
+    (issue.status === supportHumanActiveStatus
+      ? takeover.confirmed
+      : takeover.projectionCurrent && takeover.claimOwner === issue.assignee)
   const leadCanReopen = action === 'reopen_case' && canReopenCase && issue.assignee !== null
   const reopenProofCurrent = leadCanReopen && assigneeInActiveRoster
   const visible = ownerCanResolve || leadCanReopen
@@ -748,6 +876,89 @@ export function resolveTerminalActionControlState (
     reconciled,
     requestState
   }
+}
+
+export function resolveConversationComposerControlState (
+  action: ConversationComposerAction,
+  issue: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
+  takeover: TakeoverChromeState,
+  actionRequest: SupportActionRequest | undefined,
+  currentEmployee: Ref<Person> | undefined,
+  currentEmployeeActive: boolean,
+  canManageSupportActions: boolean,
+  submitting: boolean,
+  submissionFailed: boolean
+): ConversationComposerControlState {
+  const currentRequest = actionRequest?.action === action ? actionRequest : undefined
+  const requestState = currentRequest?.state
+  const publicReplyVisible =
+    canManageSupportActions &&
+    currentEmployee !== undefined &&
+    issue.assignee === currentEmployee &&
+    publicReplySourceStatuses.has(issue.status)
+  const publicReplyEvidenceCurrent =
+    publicReplyVisible &&
+    (issue.status === supportHumanActiveStatus
+      ? takeover.confirmed
+      : takeover.projectionCurrent && takeover.claimOwner === issue.assignee)
+  const internalNoteVisible =
+    canManageSupportActions &&
+    currentEmployee !== undefined &&
+    nonTerminalSupportStatuses.has(issue.status) &&
+    issue.status !== supportResolvedStatus &&
+    issue.status !== supportClosedStatus
+  const internalNoteEvidenceCurrent = internalNoteVisible && currentEmployeeActive
+  const visible = action === 'post_public_reply' ? publicReplyVisible : internalNoteVisible
+  const enabled = action === 'post_public_reply' ? publicReplyEvidenceCurrent : internalNoteEvidenceCurrent
+
+  let status: ConversationComposerUiState = 'idle'
+  if (submissionFailed || requestState === 'failed' || requestState === 'superseded') {
+    status = 'failed'
+  } else if (submitting || requestState === 'pending' || requestState === 'processing') {
+    status = 'sending'
+  } else if (requestState === 'succeeded') {
+    if (currentRequest?.resultCode === 'suppressed') {
+      status = 'suppressed'
+    } else if (
+      currentRequest?.resultCode === 'sent' ||
+      currentRequest?.resultCode === 'already_sent' ||
+      currentRequest?.resultCode === 'recorded' ||
+      currentRequest?.resultCode === 'already_recorded'
+    ) {
+      status = 'delivered'
+    } else {
+      status = 'sending'
+    }
+  }
+
+  return {
+    visible,
+    enabled,
+    canSubmit: visible && enabled && (status === 'idle' || status === 'failed'),
+    busy: status === 'sending',
+    status,
+    requestState
+  }
+}
+
+export function shouldClearConversationComposerDraft (
+  request: SupportActionRequest | undefined,
+  deliveryEventObserved: boolean
+): boolean {
+  if (request === undefined) return false
+  if (request.action !== 'post_public_reply' && request.action !== 'post_internal_note') return false
+  if (request.state !== 'succeeded') return false
+  if (request.resultCode === 'suppressed') return true
+  if (
+    (request.resultCode === 'sent' ||
+      request.resultCode === 'already_sent' ||
+      request.resultCode === 'recorded' ||
+      request.resultCode === 'already_recorded') &&
+    request.resultEventId !== undefined
+  ) {
+    return deliveryEventObserved
+  }
+  return false
 }
 
 export function isLiveSessionConfirmed (

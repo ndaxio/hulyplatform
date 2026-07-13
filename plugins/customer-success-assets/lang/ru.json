@@ -108,6 +108,16 @@
     "TerminalRequestAwaitingReconciliation": "Ожидается сверка жизненного цикла",
     "TerminalRequestFailed": "Запрос на изменение жизненного цикла завершился ошибкой",
     "TerminalRequestSuperseded": "Запрос на изменение жизненного цикла заменен",
-    "TerminalRequestConfirmed": "Изменение жизненного цикла подтверждено"
+    "TerminalRequestConfirmed": "Изменение жизненного цикла подтверждено",
+    "PublicReply": "Public reply",
+    "PublicReplyPlaceholder": "Write a public reply",
+    "PostPublicReply": "Post reply",
+    "InternalNote": "Internal note",
+    "InternalNotePlaceholder": "Write an internal note",
+    "PostInternalNote": "Post note",
+    "ConversationComposerSending": "Sending",
+    "ConversationComposerDelivered": "Delivered",
+    "ConversationComposerSuppressed": "Suppressed",
+    "ConversationComposerFailed": "Failed"
   }
 }

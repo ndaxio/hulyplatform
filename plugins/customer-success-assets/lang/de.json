@@ -108,6 +108,16 @@
     "TerminalRequestAwaitingReconciliation": "Warte auf Lifecycle-Abgleich",
     "TerminalRequestFailed": "Lifecycle-Anfrage fehlgeschlagen",
     "TerminalRequestSuperseded": "Lifecycle-Anfrage ersetzt",
-    "TerminalRequestConfirmed": "Lifecycle-Änderung bestätigt"
+    "TerminalRequestConfirmed": "Lifecycle-Änderung bestätigt",
+    "PublicReply": "Public reply",
+    "PublicReplyPlaceholder": "Write a public reply",
+    "PostPublicReply": "Post reply",
+    "InternalNote": "Internal note",
+    "InternalNotePlaceholder": "Write an internal note",
+    "PostInternalNote": "Post note",
+    "ConversationComposerSending": "Sending",
+    "ConversationComposerDelivered": "Delivered",
+    "ConversationComposerSuppressed": "Suppressed",
+    "ConversationComposerFailed": "Failed"
   }
 }

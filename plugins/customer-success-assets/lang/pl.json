@@ -108,6 +108,16 @@
     "TerminalRequestAwaitingReconciliation": "Oczekiwanie na uzgodnienie cyklu życia",
     "TerminalRequestFailed": "Wniosek o zmianę cyklu życia nie powiódł się",
     "TerminalRequestSuperseded": "Wniosek o zmianę cyklu życia został zastąpiony",
-    "TerminalRequestConfirmed": "Zmiana cyklu życia potwierdzona"
+    "TerminalRequestConfirmed": "Zmiana cyklu życia potwierdzona",
+    "PublicReply": "Public reply",
+    "PublicReplyPlaceholder": "Write a public reply",
+    "PostPublicReply": "Post reply",
+    "InternalNote": "Internal note",
+    "InternalNotePlaceholder": "Write an internal note",
+    "PostInternalNote": "Post note",
+    "ConversationComposerSending": "Sending",
+    "ConversationComposerDelivered": "Delivered",
+    "ConversationComposerSuppressed": "Suppressed",
+    "ConversationComposerFailed": "Failed"
   }
 }

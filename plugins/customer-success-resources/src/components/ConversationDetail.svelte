@@ -18,6 +18,7 @@
   import core, {
     DateRangeMode,
     SortingOrder,
+    generateId,
     getCurrentAccount,
     type DocumentQuery,
     type AccountUuid,
@@ -64,20 +65,26 @@
     buildSupportActionRequestHydrationQuery,
     buildSupportActionRequestQuery,
     buildAssignLeadCandidateQuery,
+    conversationMessageDeliveryId,
+    conversationMessageSupportActionRequestId,
     canonicalSupportAssignee,
+    resolveConversationComposerControlState,
     selectHydratedSupportActionRequestId,
     resolveSupportActionRoleAssignments,
+    shouldClearConversationComposerDraft,
     claimSelfSupportActionRequestId,
     isLiveSessionConfirmed,
     shouldReleaseActiveSupportActionRequest,
     submitAssignAssigneeSupportActionRequest,
     submitClaimSelfSupportActionRequest,
+    submitConversationMessageSupportActionRequest,
     submitReassignAssigneeSupportActionRequest,
     submitTerminalSupportActionRequest,
-    submitTransitionStatusSupportActionRequest
+    submitTransitionStatusSupportActionRequest,
+    type TerminalAction
   } from '../action-request'
-  import type { TerminalAction } from '../action-request'
   import { buildLiveSessionStateQuery, resolveTakeoverChromeState } from '../takeover-state'
+  import ConversationComposer from './ConversationComposer.svelte'
   import TakeoverStateChrome from './TakeoverStateChrome.svelte'
 
   export let issueIdentifier: string
@@ -87,6 +94,8 @@
 
   type DetailState = 'loading' | 'ready' | 'denied' | 'error'
   type SupportConversationEvent = ConversationEvent & ConversationEntryDoc
+  const composerActions = ['post_public_reply', 'post_internal_note'] as const
+  type ComposerAction = (typeof composerActions)[number]
   interface VisibleMessage {
     message: SupportConversationEvent
     lane: ConversationEntryLane
@@ -105,6 +114,10 @@
   const projectionSpaceQuery = createQuery()
   const supportActionRequestQuery = createQuery()
   const supportActionRequestHydrationQuery = createQuery()
+  const composerRequestQueries = {
+    post_public_reply: createQuery(),
+    post_internal_note: createQuery()
+  }
   const historyQuery = createQuery()
   const paginationRequest = new LatestConversationRequest()
   const currentAccount = getCurrentAccount()
@@ -167,6 +180,78 @@
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
   let supportActionRequestObservationTimeout: ReturnType<typeof setTimeout> | undefined
+  let composerDrafts: Record<ComposerAction, string> = {
+    post_public_reply: '',
+    post_internal_note: ''
+  }
+  let composerDeliveryIds: Record<ComposerAction, string | undefined> = {
+    post_public_reply: undefined,
+    post_internal_note: undefined
+  }
+  let composerRequestIds: Record<ComposerAction, Ref<SupportActionRequest> | undefined> = {
+    post_public_reply: undefined,
+    post_internal_note: undefined
+  }
+  let trackedComposerRequestIds: Record<ComposerAction, Ref<SupportActionRequest> | undefined> = {
+    post_public_reply: undefined,
+    post_internal_note: undefined
+  }
+  let composerRequests: Record<ComposerAction, SupportActionRequest | undefined> = {
+    post_public_reply: undefined,
+    post_internal_note: undefined
+  }
+  let composerSubmitting: Record<ComposerAction, boolean> = {
+    post_public_reply: false,
+    post_internal_note: false
+  }
+  let composerSubmissionFailed: Record<ComposerAction, boolean> = {
+    post_public_reply: false,
+    post_internal_note: false
+  }
+  let composerObservationTimeouts: Partial<Record<ComposerAction, ReturnType<typeof setTimeout>>> = {}
+  let currentEmployeeActive = false
+  let publicReplyComposerState = resolveConversationComposerControlState(
+    'post_public_reply',
+    {
+      _id: 'issue:none' as Ref<Issue>,
+      status: tracker.status.Backlog as Ref<IssueStatus>,
+      assignee: null,
+      modifiedOn: 0
+    },
+    resolveTakeoverChromeState({
+      _id: 'issue:none' as Ref<Issue>,
+      status: tracker.status.Backlog as Ref<IssueStatus>,
+      assignee: null,
+      modifiedOn: 0
+    }),
+    undefined,
+    undefined,
+    false,
+    false,
+    false,
+    false
+  )
+  let internalNoteComposerState = resolveConversationComposerControlState(
+    'post_internal_note',
+    {
+      _id: 'issue:none' as Ref<Issue>,
+      status: tracker.status.Backlog as Ref<IssueStatus>,
+      assignee: null,
+      modifiedOn: 0
+    },
+    resolveTakeoverChromeState({
+      _id: 'issue:none' as Ref<Issue>,
+      status: tracker.status.Backlog as Ref<IssueStatus>,
+      assignee: null,
+      modifiedOn: 0
+    }),
+    undefined,
+    undefined,
+    false,
+    false,
+    false,
+    false
+  )
 
   function uniquePersons (
     accounts: AccountUuid[],
@@ -181,9 +266,51 @@
     )
   }
 
+  function composerVisibility (action: ComposerAction): ConversationVisibilityLane {
+    return action === 'post_public_reply' ? 'public' : 'internal'
+  }
+
+  function conversationEventObserved (visibility: ConversationVisibilityLane, eventId: string | undefined): boolean {
+    if (eventId === undefined) return false
+    return mergeConversationEventPages(headMessages[visibility], historicalMessages[visibility]).some(
+      (event) => event.eventId === eventId
+    )
+  }
+
+  function setComposerDraft (action: ComposerAction, value: string): void {
+    const previous = composerDrafts[action]
+    composerDrafts = { ...composerDrafts, [action]: value }
+    if (value !== previous) {
+      composerSubmissionFailed = { ...composerSubmissionFailed, [action]: false }
+    }
+
+    if (value.trim().length === 0) {
+      if (!composerSubmitting[action]) {
+        composerDeliveryIds = { ...composerDeliveryIds, [action]: undefined }
+        composerRequests = { ...composerRequests, [action]: undefined }
+        composerRequestIds = { ...composerRequestIds, [action]: undefined }
+        trackedComposerRequestIds = { ...trackedComposerRequestIds, [action]: undefined }
+        composerRequestQueries[action].unsubscribe()
+      }
+      return
+    }
+
+    if (composerDeliveryIds[action] === undefined && issue !== undefined) {
+      composerDeliveryIds = {
+        ...composerDeliveryIds,
+        [action]: conversationMessageDeliveryId(issue._id, currentAccount.uuid, action, generateId())
+      }
+      composerRequests = { ...composerRequests, [action]: undefined }
+      composerRequestIds = { ...composerRequestIds, [action]: undefined }
+      trackedComposerRequestIds = { ...trackedComposerRequestIds, [action]: undefined }
+      composerRequestQueries[action].unsubscribe()
+    }
+  }
+
   function stopLaneQueries (): void {
     paginationRequest.invalidate()
     for (const query of Object.values(transcriptQueries)) query.unsubscribe()
+    for (const query of Object.values(composerRequestQueries)) query.unsubscribe()
     historyQuery.unsubscribe()
     visibleMessages = []
     headMessages = { public: [], internal: [], restricted: [] }
@@ -205,6 +332,37 @@
     supportActionRequestQuery.unsubscribe()
     supportActionRequestHydrationQuery.unsubscribe()
     clearSupportActionRequestObservationTimeout()
+    for (const action of composerActions) {
+      clearComposerObservationTimeout(action)
+    }
+    composerDrafts = {
+      post_public_reply: '',
+      post_internal_note: ''
+    }
+    composerDeliveryIds = {
+      post_public_reply: undefined,
+      post_internal_note: undefined
+    }
+    composerRequestIds = {
+      post_public_reply: undefined,
+      post_internal_note: undefined
+    }
+    trackedComposerRequestIds = {
+      post_public_reply: undefined,
+      post_internal_note: undefined
+    }
+    composerRequests = {
+      post_public_reply: undefined,
+      post_internal_note: undefined
+    }
+    composerSubmitting = {
+      post_public_reply: false,
+      post_internal_note: false
+    }
+    composerSubmissionFailed = {
+      post_public_reply: false,
+      post_internal_note: false
+    }
   }
 
   function clearSupportActionRequestObservationTimeout (): void {
@@ -217,11 +375,33 @@
   function armSupportActionRequestObservationTimeout (requestId: Ref<SupportActionRequest>): void {
     clearSupportActionRequestObservationTimeout()
     supportActionRequestObservationTimeout = setTimeout(() => {
-      if (activeSupportActionRequestId !== requestId || trackedSupportActionRequestId !== requestId || !actionSubmitting) {
+      if (
+        activeSupportActionRequestId !== requestId ||
+        trackedSupportActionRequestId !== requestId ||
+        !actionSubmitting
+      ) {
         return
       }
       actionSubmitting = false
       actionSubmissionFailed = true
+    }, supportActionRequestObservationTimeoutMs)
+  }
+
+  function clearComposerObservationTimeout (action: ComposerAction): void {
+    const timeout = composerObservationTimeouts[action]
+    if (timeout !== undefined) {
+      clearTimeout(timeout)
+      composerObservationTimeouts = { ...composerObservationTimeouts, [action]: undefined }
+    }
+  }
+
+  function armComposerObservationTimeout (action: ComposerAction, requestId: Ref<SupportActionRequest>): void {
+    clearComposerObservationTimeout(action)
+    composerObservationTimeouts[action] = setTimeout(() => {
+      if (composerRequestIds[action] !== requestId || trackedComposerRequestIds[action] !== requestId) return
+      if (!composerSubmitting[action]) return
+      composerSubmitting = { ...composerSubmitting, [action]: false }
+      composerSubmissionFailed = { ...composerSubmissionFailed, [action]: true }
     }, supportActionRequestObservationTimeoutMs)
   }
 
@@ -352,6 +532,28 @@
           _id: SortingOrder.Ascending
         }
       }
+    )
+  }
+
+  function watchComposerRequest (action: ComposerAction, target: Issue, requestId: Ref<SupportActionRequest>): void {
+    trackedComposerRequestIds = { ...trackedComposerRequestIds, [action]: requestId }
+    composerRequestQueries[action].query(
+      customerSuccess.class.SupportActionRequest,
+      buildSupportActionRequestQuery(projectionSpaceIds.internal, requestId, target._id),
+      (result) => {
+        if (issue?._id !== target._id || trackedComposerRequestIds[action] !== requestId) return
+        const observed = result[0]
+        if (observed === undefined) {
+          if (composerRequestIds[action] === requestId && composerSubmitting[action]) return
+          composerRequests = { ...composerRequests, [action]: undefined }
+          return
+        }
+        composerRequests = { ...composerRequests, [action]: observed }
+        clearComposerObservationTimeout(action)
+        composerSubmitting = { ...composerSubmitting, [action]: false }
+        composerSubmissionFailed = { ...composerSubmissionFailed, [action]: false }
+      },
+      { limit: 1 }
     )
   }
 
@@ -506,6 +708,7 @@
     supportActionRequestHydrationQuery.refreshClient()
     historyQuery.refreshClient()
     for (const query of Object.values(transcriptQueries)) query.refreshClient()
+    for (const query of Object.values(composerRequestQueries)) query.refreshClient()
   }
 
   function releaseStaleSupportActionRequest (): void {
@@ -725,12 +928,130 @@
     }
   }
 
+  async function submitComposer (action: ComposerAction): Promise<void> {
+    if (issue === undefined || currentEmployee === undefined || composerSubmitting[action]) return
+
+    let deliveryId = composerDeliveryIds[action]
+    const draft = composerDrafts[action]
+    if (deliveryId === undefined || draft.trim().length === 0) return
+    if (
+      composerSubmissionFailed[action] ||
+      composerRequests[action]?.state === 'failed' ||
+      composerRequests[action]?.state === 'superseded'
+    ) {
+      clearComposerObservationTimeout(action)
+      composerRequestQueries[action].unsubscribe()
+      deliveryId = conversationMessageDeliveryId(issue._id, currentAccount.uuid, action, generateId())
+      composerDeliveryIds = { ...composerDeliveryIds, [action]: deliveryId }
+      composerRequestIds = { ...composerRequestIds, [action]: undefined }
+      trackedComposerRequestIds = { ...trackedComposerRequestIds, [action]: undefined }
+      composerRequests = { ...composerRequests, [action]: undefined }
+    }
+    const expectedRequestId = conversationMessageSupportActionRequestId(
+      issue._id,
+      currentAccount.uuid,
+      action,
+      deliveryId,
+      issue.modifiedOn
+    )
+
+    const control = resolveConversationComposerControlState(
+      action,
+      { ...issue, assignee: canonicalIssueAssignee },
+      resolveTakeoverChromeState({ ...issue, assignee: canonicalIssueAssignee }, liveSessionState),
+      composerRequests[action],
+      currentEmployee,
+      currentEmployeeActive,
+      canManageSupportActions,
+      composerSubmitting[action],
+      composerSubmissionFailed[action]
+    )
+    if (!control.canSubmit) return
+
+    composerSubmitting = { ...composerSubmitting, [action]: true }
+    composerSubmissionFailed = { ...composerSubmissionFailed, [action]: false }
+    try {
+      const { requestId, committed } = await submitConversationMessageSupportActionRequest(
+        client,
+        projectionSpaceIds.internal,
+        { ...issue, assignee: canonicalIssueAssignee },
+        currentAccount.uuid,
+        action,
+        deliveryId,
+        draft
+      )
+      if (requestId !== expectedRequestId) throw new Error('conversation_composer_request_id_mismatch')
+      composerRequestIds = { ...composerRequestIds, [action]: requestId }
+      if (!committed.result) {
+        clearComposerObservationTimeout(action)
+        composerSubmitting = { ...composerSubmitting, [action]: false }
+        composerSubmissionFailed = { ...composerSubmissionFailed, [action]: true }
+        return
+      }
+      watchComposerRequest(action, issue, requestId)
+      armComposerObservationTimeout(action, requestId)
+    } catch {
+      clearComposerObservationTimeout(action)
+      composerSubmitting = { ...composerSubmitting, [action]: false }
+      composerSubmissionFailed = { ...composerSubmissionFailed, [action]: true }
+    }
+  }
+
   $: watchIssue(issueIdentifier, projectId)
   $: supportActionRoles = resolveSupportActionRoleAssignments(internalProjectionSpace, hierarchy)
   $: canManageSupportActions =
     supportActionRoles.supportAgent.includes(currentAccount.uuid) ||
     supportActionRoles.supportLead.includes(currentAccount.uuid)
   $: canAssignLead = supportActionRoles.supportLead.includes(currentAccount.uuid)
+  $: currentEmployeeActive = currentEmployee !== undefined && $employeeByIdStore.get(currentEmployee)?.active === true
+  $: publicReplyComposerState = resolveConversationComposerControlState(
+    'post_public_reply',
+    {
+      _id: issue?._id ?? ('issue:none' as Ref<Issue>),
+      status: issue?.status ?? (tracker.status.Backlog as Ref<IssueStatus>),
+      assignee: canonicalIssueAssignee,
+      modifiedOn: issue?.modifiedOn ?? 0
+    },
+    resolveTakeoverChromeState(
+      {
+        _id: issue?._id ?? ('issue:none' as Ref<Issue>),
+        status: issue?.status ?? (tracker.status.Backlog as Ref<IssueStatus>),
+        assignee: canonicalIssueAssignee,
+        modifiedOn: issue?.modifiedOn ?? 0
+      },
+      liveSessionState
+    ),
+    composerRequests.post_public_reply,
+    currentEmployee,
+    currentEmployeeActive,
+    canManageSupportActions,
+    composerSubmitting.post_public_reply,
+    composerSubmissionFailed.post_public_reply
+  )
+  $: internalNoteComposerState = resolveConversationComposerControlState(
+    'post_internal_note',
+    {
+      _id: issue?._id ?? ('issue:none' as Ref<Issue>),
+      status: issue?.status ?? (tracker.status.Backlog as Ref<IssueStatus>),
+      assignee: canonicalIssueAssignee,
+      modifiedOn: issue?.modifiedOn ?? 0
+    },
+    resolveTakeoverChromeState(
+      {
+        _id: issue?._id ?? ('issue:none' as Ref<Issue>),
+        status: issue?.status ?? (tracker.status.Backlog as Ref<IssueStatus>),
+        assignee: canonicalIssueAssignee,
+        modifiedOn: issue?.modifiedOn ?? 0
+      },
+      liveSessionState
+    ),
+    composerRequests.post_internal_note,
+    currentEmployee,
+    currentEmployeeActive,
+    canManageSupportActions,
+    composerSubmitting.post_internal_note,
+    composerSubmissionFailed.post_internal_note
+  )
   $: assignLeadLeadCandidates = uniquePersons(supportActionRoles.supportLead, $employeeRefByAccountUuidStore)
   $: assignLeadAgentCandidates = uniquePersons(supportActionRoles.supportAgent, $employeeRefByAccountUuidStore)
   $: assignLeadCategories = [
@@ -771,6 +1092,30 @@
   $: if (trackedInternalProjectionSpaceId !== projectionSpaceIds.internal) {
     trackedInternalProjectionSpaceId = projectionSpaceIds.internal
     watchInternalProjectionSpace(projectionSpaceIds.internal)
+  }
+  $: if (
+    shouldClearConversationComposerDraft(
+      composerRequests.post_public_reply,
+      conversationEventObserved(
+        composerVisibility('post_public_reply'),
+        composerRequests.post_public_reply?.resultEventId
+      )
+    )
+  ) {
+    composerDrafts = { ...composerDrafts, post_public_reply: '' }
+    composerDeliveryIds = { ...composerDeliveryIds, post_public_reply: undefined }
+  }
+  $: if (
+    shouldClearConversationComposerDraft(
+      composerRequests.post_internal_note,
+      conversationEventObserved(
+        composerVisibility('post_internal_note'),
+        composerRequests.post_internal_note?.resultEventId
+      )
+    )
+  ) {
+    composerDrafts = { ...composerDrafts, post_internal_note: '' }
+    composerDeliveryIds = { ...composerDeliveryIds, post_internal_note: undefined }
   }
   $: if (state === 'ready' && issue !== undefined) {
     const nextTrackedRequestId =
@@ -972,6 +1317,44 @@
             {/if}
           </Scroller>
         </div>
+        <div class="composer-stack">
+          {#if publicReplyComposerState.visible}
+            <ConversationComposer
+              action="post_public_reply"
+              title={customerSuccess.string.PublicReply}
+              placeholder={customerSuccess.string.PublicReplyPlaceholder}
+              submitLabel={customerSuccess.string.PostPublicReply}
+              draft={composerDrafts.post_public_reply}
+              disabled={!publicReplyComposerState.canSubmit}
+              busy={publicReplyComposerState.busy}
+              status={publicReplyComposerState.status}
+              on:draft={(event) => {
+                setComposerDraft('post_public_reply', event.detail)
+              }}
+              on:submit={() => {
+                void submitComposer('post_public_reply')
+              }}
+            />
+          {/if}
+          {#if internalNoteComposerState.visible}
+            <ConversationComposer
+              action="post_internal_note"
+              title={customerSuccess.string.InternalNote}
+              placeholder={customerSuccess.string.InternalNotePlaceholder}
+              submitLabel={customerSuccess.string.PostInternalNote}
+              draft={composerDrafts.post_internal_note}
+              disabled={!internalNoteComposerState.canSubmit}
+              busy={internalNoteComposerState.busy}
+              status={internalNoteComposerState.status}
+              on:draft={(event) => {
+                setComposerDraft('post_internal_note', event.detail)
+              }}
+              on:submit={() => {
+                void submitComposer('post_internal_note')
+              }}
+            />
+          {/if}
+        </div>
       </section>
 
       <aside
@@ -1117,6 +1500,13 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+  }
+
+  .composer-stack {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem 1rem;
+    border-top: 1px solid var(--theme-divider-color);
   }
 
   .activity-lane {
