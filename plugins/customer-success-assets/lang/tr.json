@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "Destek lideri",
+    "AssignLead": "Temsilci ata",
+    "AssignLeadPlaceholder": "Destek temsilcileri ve liderleri ara",
+    "AssignLeadRequest": "Atama isteği",
+    "AssignLeadRequestPending": "Atama isteği beklemede",
+    "AssignLeadRequestProcessing": "Atama isteği işleniyor",
+    "AssignLeadRequestAwaitingReconciliation": "Kayıt mutabakatı bekleniyor",
+    "AssignLeadRequestFailed": "Atama isteği başarısız oldu",
+    "AssignLeadRequestSuperseded": "Atama isteği değiştirildi",
+    "AssignLeadConfirmed": "Atama onaylandı"
   }
 }

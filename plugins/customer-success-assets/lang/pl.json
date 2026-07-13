@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "Lider wsparcia",
+    "AssignLead": "Przypisz agenta",
+    "AssignLeadPlaceholder": "Szukaj agentów wsparcia i liderów",
+    "AssignLeadRequest": "Prośba o przypisanie",
+    "AssignLeadRequestPending": "Prośba o przypisanie oczekuje",
+    "AssignLeadRequestProcessing": "Prośba o przypisanie w toku",
+    "AssignLeadRequestAwaitingReconciliation": "Oczekiwanie na uzgodnienie zgłoszenia",
+    "AssignLeadRequestFailed": "Prośba o przypisanie nie powiodła się",
+    "AssignLeadRequestSuperseded": "Prośba o przypisanie zastąpiona",
+    "AssignLeadConfirmed": "Przypisanie potwierdzone"
   }
 }

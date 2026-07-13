@@ -5,7 +5,9 @@
 -->
 <script lang="ts">
   import activity, { type ActivityMessage } from '@hcengineering/activity'
-  import { getCurrentEmployee } from '@hcengineering/contact'
+  import { getCurrentEmployee, type Employee, type Person } from '@hcengineering/contact'
+  import { employeeRefByAccountUuidStore } from '@hcengineering/contact-resources'
+  import type { AssigneeCategory } from '@hcengineering/contact-resources/src/assignee'
   import customerSuccess, {
     type ConversationEvent,
     type ConversationProjectionSpace,
@@ -17,6 +19,7 @@
     SortingOrder,
     getCurrentAccount,
     type DocumentQuery,
+    type AccountUuid,
     type Ref,
     type WithLookup
   } from '@hcengineering/core'
@@ -56,13 +59,18 @@
     type ConversationVisibilityLane
   } from '../conversation-detail'
   import {
+    buildSupportActionRequestHydrationQuery,
     buildSupportActionRequestQuery,
+    buildAssignLeadCandidateQuery,
+    canonicalSupportAssignee,
+    selectHydratedSupportActionRequestId,
+    resolveSupportActionRoleAssignments,
     claimSelfSupportActionRequestId,
-    isSupportActionRoleMember,
     shouldReleaseActiveSupportActionRequest,
+    submitAssignAssigneeSupportActionRequest,
     submitClaimSelfSupportActionRequest
   } from '../action-request'
-  import { buildLiveSessionStateQuery } from '../takeover-state'
+  import { buildLiveSessionStateQuery, resolveTakeoverChromeState } from '../takeover-state'
   import TakeoverStateChrome from './TakeoverStateChrome.svelte'
 
   export let issueIdentifier: string
@@ -89,6 +97,7 @@
   const liveSessionQuery = createQuery()
   const projectionSpaceQuery = createQuery()
   const supportActionRequestQuery = createQuery()
+  const supportActionRequestHydrationQuery = createQuery()
   const historyQuery = createQuery()
   const paginationRequest = new LatestConversationRequest()
   const currentAccount = getCurrentAccount()
@@ -129,14 +138,38 @@
   let historyLoading = true
   let mobileLane: 'conversation' | 'activity' = 'conversation'
   let canManageSupportActions = false
+  let canAssignLead = false
   let trackedInternalProjectionSpaceId: Ref<ConversationProjectionSpace> | undefined
   let trackedSupportActionRequestId: Ref<SupportActionRequest> | undefined
+  let trackedSupportActionRequestHydrationKey: string | undefined
   let activeSupportActionRequestId: Ref<SupportActionRequest> | undefined
-  let trackedRequestId: Ref<SupportActionRequest> | undefined
-  let claimSubmitting = false
-  let claimSubmissionFailed = false
+  let hydratedSupportActionRequestId: Ref<SupportActionRequest> | undefined
+  let actionSubmitting = false
+  let actionSubmissionFailed = false
+  let lastSubmittedAction: SupportActionRequest['action'] | undefined
+  let assignLeadCandidateQuery: DocumentQuery<Employee> | undefined
+  let assignLeadCategories: AssigneeCategory[] = []
+  let assignLeadSelection: Ref<Person> | null | undefined = undefined
+  let canonicalIssueAssignee: Ref<Person> | null = null
+  let supportActionRoles = { supportAgent: [] as AccountUuid[], supportLead: [] as AccountUuid[] }
+  let assignLeadLeadCandidates: Array<Ref<Person>> = []
+  let assignLeadAgentCandidates: Array<Ref<Person>> = []
+  let assignLeadCandidates: Array<Ref<Person>> = []
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
+
+  function uniquePersons (
+    accounts: AccountUuid[],
+    employeeRefs: ReadonlyMap<AccountUuid, Ref<Employee>>
+  ): Array<Ref<Person>> {
+    return Array.from(
+      new Set(
+        accounts
+          .map((account) => employeeRefs.get(account) as Ref<Person> | undefined)
+          .filter((person): person is Ref<Person> => person !== undefined)
+      )
+    )
+  }
 
   function stopLaneQueries (): void {
     paginationRequest.invalidate()
@@ -151,11 +184,16 @@
     history = []
     subscribedIssueId = undefined
     trackedSupportActionRequestId = undefined
+    trackedSupportActionRequestHydrationKey = undefined
     activeSupportActionRequestId = undefined
-    claimSubmitting = false
-    claimSubmissionFailed = false
+    hydratedSupportActionRequestId = undefined
+    actionSubmitting = false
+    actionSubmissionFailed = false
+    lastSubmittedAction = undefined
+    assignLeadSelection = undefined
     supportActionRequest = undefined
     supportActionRequestQuery.unsubscribe()
+    supportActionRequestHydrationQuery.unsubscribe()
   }
 
   function watchIssue (identifier: string, supportProjectId: Ref<Project>): void {
@@ -244,10 +282,45 @@
       (result) => {
         if (issue?._id !== target._id || trackedSupportActionRequestId !== requestId) return
         supportActionRequest = result[0]
-        claimSubmitting = false
-        claimSubmissionFailed = false
+        actionSubmitting = false
+        actionSubmissionFailed = false
       },
       { limit: 1 }
+    )
+  }
+
+  function watchSupportActionRequestHydration (target: Issue, canonicalAssignee: Ref<Person> | null): void {
+    const hydrationKey =
+      `${projectionSpaceIds.internal}:${target._id}:${currentAccount.uuid}:${target.modifiedOn}:${canonicalAssignee ?? 'none'}`
+    trackedSupportActionRequestHydrationKey = hydrationKey
+    supportActionRequestHydrationQuery.query(
+      customerSuccess.class.SupportActionRequest,
+      buildSupportActionRequestHydrationQuery(
+        projectionSpaceIds.internal,
+        target._id,
+        currentAccount.uuid
+      ),
+      (result) => {
+        if (
+          issue?._id !== target._id ||
+          issue.modifiedOn !== target.modifiedOn ||
+          trackedSupportActionRequestHydrationKey !== hydrationKey
+        ) {
+          return
+        }
+
+        hydratedSupportActionRequestId = selectHydratedSupportActionRequestId(
+          result as SupportActionRequest[],
+          { ...target, assignee: canonicalAssignee }
+        )
+      },
+      {
+        limit: 20,
+        sort: {
+          modifiedOn: SortingOrder.Descending,
+          _id: SortingOrder.Ascending
+        }
+      }
     )
   }
 
@@ -399,63 +472,136 @@
     liveSessionQuery.refreshClient()
     projectionSpaceQuery.refreshClient()
     supportActionRequestQuery.refreshClient()
+    supportActionRequestHydrationQuery.refreshClient()
     historyQuery.refreshClient()
     for (const query of Object.values(transcriptQueries)) query.refreshClient()
   }
 
   async function requestClaimSelf (): Promise<void> {
-    if (issue === undefined || currentEmployee === undefined || !canManageSupportActions || claimSubmitting) return
+    if (issue === undefined || currentEmployee === undefined || !canManageSupportActions || actionSubmitting) return
 
-    claimSubmitting = true
-    claimSubmissionFailed = false
+    lastSubmittedAction = 'claim_self'
+    actionSubmitting = true
+    actionSubmissionFailed = false
     try {
       const { requestId, committed } = await submitClaimSelfSupportActionRequest(
         client,
         projectionSpaceIds.internal,
-        issue,
+        { ...issue, assignee: canonicalIssueAssignee },
         currentAccount.uuid,
         currentEmployee
       )
       activeSupportActionRequestId = requestId
       trackedSupportActionRequestId = undefined
       if (!committed.result) {
-        claimSubmitting = false
+        actionSubmitting = false
         supportActionRequestQuery.refreshClient()
       }
     } catch {
-      claimSubmitting = false
-      claimSubmissionFailed = true
+      actionSubmitting = false
+      actionSubmissionFailed = true
+    }
+  }
+
+  async function requestAssignLead (requestedAssignee: Ref<Person> | null | undefined): Promise<void> {
+    if (
+      issue === undefined ||
+      requestedAssignee == null ||
+      issue.assignee !== null ||
+      !canAssignLead ||
+      actionSubmitting
+    ) {
+      return
+    }
+
+    lastSubmittedAction = 'assign_assignee'
+    assignLeadSelection = requestedAssignee
+    actionSubmitting = true
+    actionSubmissionFailed = false
+    try {
+      const { requestId, committed } = await submitAssignAssigneeSupportActionRequest(
+        client,
+        projectionSpaceIds.internal,
+        issue,
+        currentAccount.uuid,
+        requestedAssignee
+      )
+      activeSupportActionRequestId = requestId
+      trackedSupportActionRequestId = undefined
+      if (!committed.result) {
+        actionSubmitting = false
+        supportActionRequestQuery.refreshClient()
+      }
+    } catch {
+      actionSubmitting = false
+      actionSubmissionFailed = true
     }
   }
 
   $: watchIssue(issueIdentifier, projectId)
-  $: canManageSupportActions = isSupportActionRoleMember(internalProjectionSpace, hierarchy, currentAccount.uuid)
-  $: trackedRequestId =
-    issue === undefined
-      ? undefined
-      : (activeSupportActionRequestId ??
-        claimSelfSupportActionRequestId(issue._id, currentAccount.uuid, issue.modifiedOn))
+  $: supportActionRoles = resolveSupportActionRoleAssignments(internalProjectionSpace, hierarchy)
+  $: canManageSupportActions =
+    supportActionRoles.supportAgent.includes(currentAccount.uuid) ||
+    supportActionRoles.supportLead.includes(currentAccount.uuid)
+  $: canAssignLead = supportActionRoles.supportLead.includes(currentAccount.uuid)
+  $: assignLeadLeadCandidates = uniquePersons(supportActionRoles.supportLead, $employeeRefByAccountUuidStore)
+  $: assignLeadAgentCandidates = uniquePersons(supportActionRoles.supportAgent, $employeeRefByAccountUuidStore)
+  $: assignLeadCategories = [
+    {
+      label: customerSuccess.string.SupportLead,
+      func: async () => assignLeadLeadCandidates
+    },
+    {
+      label: customerSuccess.string.SupportAgent,
+      func: async () => assignLeadAgentCandidates
+    }
+  ].filter(
+    (category) =>
+      (category.label === customerSuccess.string.SupportLead ? assignLeadLeadCandidates : assignLeadAgentCandidates)
+        .length > 0
+  )
+  $: assignLeadCandidates = Array.from(new Set([...assignLeadLeadCandidates, ...assignLeadAgentCandidates]))
+  $: assignLeadCandidateQuery = buildAssignLeadCandidateQuery(assignLeadCandidates)
+  $: if (issue === undefined) {
+    canonicalIssueAssignee = null
+  } else {
+    const cachedAssignee = canonicalSupportAssignee(issue.assignee, $employeeRefByAccountUuidStore)
+    const canonicalState = resolveTakeoverChromeState({ ...issue, assignee: cachedAssignee }, liveSessionState)
+    canonicalIssueAssignee = canonicalState.projectionCurrent ? canonicalState.claimOwner : cachedAssignee
+  }
   $: if (issue !== undefined && shouldReleaseActiveSupportActionRequest(supportActionRequest, issue.modifiedOn)) {
+    if (supportActionRequest?.action === 'assign_assignee') assignLeadSelection = undefined
     activeSupportActionRequestId = undefined
+    hydratedSupportActionRequestId = undefined
     trackedSupportActionRequestId = undefined
+  }
+  $: if (supportActionRequest?.action === 'assign_assignee') {
+    assignLeadSelection = supportActionRequest.requestedAssignee
+  } else if (issue?.assignee === null && activeSupportActionRequestId === undefined) {
+    assignLeadSelection = undefined
   }
   $: if (trackedInternalProjectionSpaceId !== projectionSpaceIds.internal) {
     trackedInternalProjectionSpaceId = projectionSpaceIds.internal
     watchInternalProjectionSpace(projectionSpaceIds.internal)
   }
   $: if (state === 'ready' && issue !== undefined) {
+    const nextTrackedRequestId =
+      activeSupportActionRequestId ??
+        hydratedSupportActionRequestId ??
+      claimSelfSupportActionRequestId(issue._id, currentAccount.uuid, issue.modifiedOn)
+
     watchIssueStatus(issue)
     watchLiveSessionState(issue)
     if (
       canManageSupportActions &&
-      trackedRequestId !== undefined &&
-      trackedSupportActionRequestId !== trackedRequestId
+      nextTrackedRequestId !== undefined &&
+      trackedSupportActionRequestId !== nextTrackedRequestId
     ) {
-      watchSupportActionRequest(issue, trackedRequestId)
-    } else if (!canManageSupportActions || trackedRequestId === undefined) {
+      watchSupportActionRequest(issue, nextTrackedRequestId)
+    } else if (!canManageSupportActions || nextTrackedRequestId === undefined) {
       trackedSupportActionRequestId = undefined
       supportActionRequest = undefined
-      claimSubmitting = false
+      actionSubmitting = false
       supportActionRequestQuery.unsubscribe()
     }
     if (subscribedIssueId !== issue._id) {
@@ -463,6 +609,23 @@
       watchTranscript(issue)
       watchHistory(issue)
     }
+  }
+  $: if (
+    state === 'ready' &&
+    issue !== undefined &&
+    canManageSupportActions &&
+    activeSupportActionRequestId === undefined
+  ) {
+    const hydrationKey =
+      `${projectionSpaceIds.internal}:${issue._id}:${currentAccount.uuid}:${issue.modifiedOn}:${canonicalIssueAssignee ?? 'none'}`
+    if (trackedSupportActionRequestHydrationKey !== hydrationKey) {
+      hydratedSupportActionRequestId = undefined
+      watchSupportActionRequestHydration(issue, canonicalIssueAssignee)
+    }
+  } else if (trackedSupportActionRequestHydrationKey !== undefined) {
+    trackedSupportActionRequestHydrationKey = undefined
+    hydratedSupportActionRequestId = undefined
+    supportActionRequestHydrationQuery.unsubscribe()
   }
 </script>
 
@@ -479,15 +642,14 @@
     </svelte:fragment>
     <Breadcrumb icon={inbox.icon.Inbox} title={issue?.title ?? issueIdentifier} size="large" isCurrent />
     {#if state !== 'loading'}
-      <svelte:fragment slot="actions">
-        <Button
-          icon={IconRedo}
-          size="small"
-          kind="ghost"
-          label={customerSuccess.string.Refresh}
-          on:click={refreshDetail}
-        />
-      </svelte:fragment>
+      <Button
+        slot="actions"
+        icon={IconRedo}
+        size="small"
+        kind="ghost"
+        label={customerSuccess.string.Refresh}
+        on:click={refreshDetail}
+      />
     {/if}
   </Header>
 
@@ -511,13 +673,20 @@
 
     <TakeoverStateChrome
       {issue}
+      assignee={canonicalIssueAssignee}
       projection={liveSessionState}
       actionRequest={supportActionRequest}
       {currentEmployee}
       {canManageSupportActions}
-      submitting={claimSubmitting}
-      submissionFailed={claimSubmissionFailed}
+      {canAssignLead}
+      submitting={actionSubmitting}
+      submissionFailed={actionSubmissionFailed}
+      {lastSubmittedAction}
+      {assignLeadCandidateQuery}
+      {assignLeadCategories}
+      {assignLeadSelection}
       {requestClaimSelf}
+      {requestAssignLead}
     />
 
     {#if $deviceInfo.isMobile}

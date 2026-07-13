@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "지원 리드",
+    "AssignLead": "상담원 지정",
+    "AssignLeadPlaceholder": "지원 상담원과 리드 검색",
+    "AssignLeadRequest": "지정 요청",
+    "AssignLeadRequestPending": "지정 요청 대기 중",
+    "AssignLeadRequestProcessing": "지정 요청 처리 중",
+    "AssignLeadRequestAwaitingReconciliation": "이슈 조정 대기 중",
+    "AssignLeadRequestFailed": "지정 요청 실패",
+    "AssignLeadRequestSuperseded": "지정 요청 대체됨",
+    "AssignLeadConfirmed": "지정 완료"
   }
 }

@@ -182,10 +182,23 @@ internal projection space through the ordinary authenticated Huly client:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:claim_self:<expectedModifiedOn>`
 
+CSSC-15A keeps that path intact and adds a second lead-only request shape for
+conservative assignee mutations:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:assign_assignee:<requestedAssignee>:<expectedModifiedOn>`
+
 Creation is guarded by `client.apply(requestId).notMatch(...)` on the globally
 unique exact id. The reactive read additionally matches the internal space,
 issue id, and schema version. The browser does not call the adapter directly and
 does not receive adapter tokens.
+
+After refresh, the portal discovers only support-action rows whose deterministic
+id encodes the current account and whose issue, internal space, and schema
+match. It deterministically selects the latest relevant row and then returns to
+the exact-id subscription. Pending and terminal conflict evidence can survive
+an issue snapshot change; succeeded rows remain relevant only while their
+claimed or assigned outcome still matches issue truth. A stale terminal row is
+displayable but cannot disable a valid action on a newer snapshot.
 
 SupportAgent and SupportLead role membership in the internal projection space is
 the only UI path that may render the claim-self control. Compliance-only or
@@ -193,11 +206,20 @@ otherwise unauthorized viewers may still read the rest of the detail page when
 authorized for it, but they must not see action controls or action-request
 status chrome.
 
+SupportLead membership is the only UI path that may render the lead-assignment
+picker. The picker filters only active Persons mapped from SupportAgent or
+SupportLead assignments in the internal projection space, but that filtering is
+advisory. The adapter independently requires the target to be active, hold a
+support role, and appear in that same internal projection roster.
+
 `SupportActionRequest.state` is advisory workflow state, not takeover truth.
 Pending, processing, failed, and superseded may be rendered reactively. Even
 `state: succeeded` means only that adapter-side processing completed; takeover
 success is still gated exclusively by reconciled `LiveSessionState` plus
-authoritative `Issue.status`.
+authoritative `Issue.status`. For `assign_assignee`, `state: succeeded` still
+means only that processing completed; the portal treats success as pending until
+the reactive `Issue` snapshot shows the requested assignee on the current or a
+newer `modifiedOn`.
 
 ## Registration Surface
 

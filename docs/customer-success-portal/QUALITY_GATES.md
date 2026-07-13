@@ -23,11 +23,12 @@ but UI delivery must prove its own data boundaries and live behavior.
 | Browser boundary | No service or adapter token in bundles, network calls, storage, or diagnostics. |
 | Claim concurrency | Two operators race; exactly one wins; loser reconciles without false success. |
 | Exact-id CAS | Duplicate claim-self clicks for one issue snapshot converge on one deterministic request id and one row. |
+| Lead assign boundary | Only SupportLead sees the picker; only unassigned conservative statuses are mutable; candidates and server authorization require active SupportAgent/SupportLead internal-roster membership; request state survives refresh. |
 | Delivery idempotency | Retry and reconnect cannot duplicate a customer-visible reply. |
 | Stable identity | Rows and events remain stable across refresh, replay, and out-of-order delivery. |
 | Outage recovery | Huly, adapter, and orchestrator failure states are distinct and recover without losing drafts. |
 | Accessibility | Keyboard completion, focus return, screen-reader names, contrast, and reduced motion in the rendered app. |
-| Localization | English and French operator copy plus localized date/time and failure states. |
+| Localization | All shipped locale bundles contain localized assignment controls and failure/reconciliation states; dates and times use locale-aware presenters. |
 | Performance | Large queue, long transcript, bounded subscriptions, stable scrolling, and agreed latency budgets. |
 | Audit | Correlation chain from Huly action through customer delivery outcome without transcript leakage in logs. |
 | Unauthorized visibility | SupportActionRequest controls and request-state chrome are absent for non-agent/non-lead viewers. |

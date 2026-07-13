@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "Support lead",
+    "AssignLead": "Assign agent",
+    "AssignLeadPlaceholder": "Search support agents and leads",
+    "AssignLeadRequest": "Assignment request",
+    "AssignLeadRequestPending": "Assignment request pending",
+    "AssignLeadRequestProcessing": "Assignment request processing",
+    "AssignLeadRequestAwaitingReconciliation": "Awaiting issue reconciliation",
+    "AssignLeadRequestFailed": "Assignment request failed",
+    "AssignLeadRequestSuperseded": "Assignment request superseded",
+    "AssignLeadConfirmed": "Assignment confirmed"
   }
 }

@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Demande en cours",
     "ClaimRequestAwaitingReconciliation": "En attente du rapprochement de la session en direct",
     "ClaimRequestFailed": "Échec de la demande de prise en charge",
-    "ClaimRequestSuperseded": "Demande de prise en charge remplacée"
+    "ClaimRequestSuperseded": "Demande de prise en charge remplacée",
+    "SupportLead": "Responsable du soutien",
+    "AssignLead": "Attribuer un agent",
+    "AssignLeadPlaceholder": "Rechercher des agents et responsables du soutien",
+    "AssignLeadRequest": "Demande d'attribution",
+    "AssignLeadRequestPending": "Demande d'attribution en attente",
+    "AssignLeadRequestProcessing": "Demande d'attribution en cours",
+    "AssignLeadRequestAwaitingReconciliation": "En attente du rapprochement du billet",
+    "AssignLeadRequestFailed": "Échec de la demande d'attribution",
+    "AssignLeadRequestSuperseded": "Demande d'attribution remplacée",
+    "AssignLeadConfirmed": "Attribution confirmée"
   }
 }

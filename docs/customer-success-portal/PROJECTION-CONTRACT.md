@@ -105,16 +105,25 @@ Each request id is deterministic and exact-id guarded:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:claim_self:<expectedModifiedOn>`
 
+CSSC-15A adds a second deterministic id for lead assignment:
+
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:assign_assignee:<requestedAssignee>:<expectedModifiedOn>`
+
 The browser creates it through `client.apply(requestId).notMatch(...)` guarded
 by the globally unique exact `_id`. Its reactive read subscription additionally
 requires the exact internal `space`, `issueId`, and `schemaVersion: 1`.
+On refresh, request discovery is scoped to the current account encoded in
+`_id`, the exact issue/internal space, and schema. Deterministic latest-relevant
+selection is followed by an exact-id subscription. Succeeded rows hydrate only
+while their requested outcome still matches issue truth; stale terminal
+conflict evidence remains visible without blocking a newer-snapshot action.
 
 | Field | Contract |
 |---|---|
-| `_id` | Deterministic id built from issue id, current account uuid, action, and expected modified time. |
+| `_id` | Deterministic id built from issue id, current account uuid, action, expected target person when the action needs one, and expected modified time. |
 | `space` | Exact internal projection space. |
 | `issueId` | Exact Huly support issue reference. |
-| `action` | `claim_self` for CSSC-15. |
+| `action` | `claim_self` or `assign_assignee`. |
 | `requestedAssignee` | Huly Person the creator is requesting for claim/ack. |
 | `expectedStatus` | Exact issue status the request expects. |
 | `expectedAssignee` | Exact expected assignee, or null. |
@@ -164,9 +173,23 @@ forbids, to every human role in the space type.
 - humans must be forbidden from update/remove;
 - the browser shows claim-self controls only to SupportAgent and SupportLead
   role members; compliance-only viewers must not see those controls;
-- the adapter independently verifies that the immutable creator identity maps to
-  `requestedAssignee` and holds the support-agent or support-lead role before
-  taking action.
+- the browser shows lead-assignment controls only to SupportLead role members;
+- the lead-assignment picker is advisory only and filters to active Persons
+  mapped from SupportAgent or SupportLead assignments in the internal
+  projection space;
+- for `claim_self`, the adapter independently verifies that the immutable
+  creator maps to `requestedAssignee` and holds a support role;
+- for `assign_assignee`, the adapter requires a SupportLead creator and an
+  active requested Person present in the internal projection space's
+  SupportAgent/SupportLead roster.
+
+The portal canonicalizes a legacy account/social-identity `Issue.assignee`
+through Huly's account-to-employee map before comparing it with the
+Person-typed `LiveSessionState.claimOwner` or evaluating action controls.
+Native Person assignees remain unchanged. If a legacy social identity is not in
+the browser cache, a current system-written projection (matching issue, status,
+stage, and observation time) supplies the canonical Person for takeover display
+and claim-self eligibility.
 
 Huly's restricted space middleware keeps a single bypass for
 `core.account.System`, which is the trusted writer path. A live mutation test
@@ -200,8 +223,12 @@ The trusted adapter writer must:
    conditional claim/ack/release writes must not advance the projection.
 8. Consume `SupportActionRequest` only from the exact internal projection space.
    Derive creator identity from the persisted Huly transaction, verify role and
-   assignee mapping, verify expected status/assignee/modifiedOn, then invoke the
-   existing CAS claim/ack flow plus the stable joined notice.
+   target roster membership, verify expected status/assignee/modifiedOn, then
+   invoke the existing CAS claim/ack flow or the conservative lead-assign
+   mutation. Fresh pending requests never infer success from pre-existing issue
+   state; only an expired processing lease with a compatible immutable
+   unassigned snapshot and an adapter-owned `assignment_committed` marker
+   written atomically with the assignee CAS may resume durable progress.
 
 ## Ordering And Pagination
 

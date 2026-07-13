@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "サポート責任者",
+    "AssignLead": "エージェントを割り当て",
+    "AssignLeadPlaceholder": "サポート担当者と責任者を検索",
+    "AssignLeadRequest": "割り当て依頼",
+    "AssignLeadRequestPending": "割り当て依頼保留中",
+    "AssignLeadRequestProcessing": "割り当て依頼を処理中",
+    "AssignLeadRequestAwaitingReconciliation": "課題の照合待ち",
+    "AssignLeadRequestFailed": "割り当て依頼に失敗",
+    "AssignLeadRequestSuperseded": "割り当て依頼は置き換え済み",
+    "AssignLeadConfirmed": "割り当て確定"
   }
 }

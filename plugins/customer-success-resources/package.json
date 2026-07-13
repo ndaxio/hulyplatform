@@ -43,6 +43,7 @@
     "@hcengineering/activity": "workspace:^0.7.0",
     "@hcengineering/chunter": "workspace:^0.7.0",
     "@hcengineering/contact": "workspace:^0.7.0",
+    "@hcengineering/contact-resources": "workspace:^0.7.0",
     "@hcengineering/core": "workspace:^0.7.26",
     "@hcengineering/customer-success": "workspace:^0.7.0",
     "@hcengineering/inbox": "workspace:^0.7.0",

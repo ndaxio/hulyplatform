@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "Vedoucí podpory",
+    "AssignLead": "Přiřadit agenta",
+    "AssignLeadPlaceholder": "Hledat agenty podpory a vedoucí",
+    "AssignLeadRequest": "Žádost o přiřazení",
+    "AssignLeadRequestPending": "Žádost o přiřazení čeká",
+    "AssignLeadRequestProcessing": "Žádost o přiřazení se zpracovává",
+    "AssignLeadRequestAwaitingReconciliation": "Čeká na sladění tiketu",
+    "AssignLeadRequestFailed": "Žádost o přiřazení selhala",
+    "AssignLeadRequestSuperseded": "Žádost o přiřazení byla nahrazena",
+    "AssignLeadConfirmed": "Přiřazení potvrzeno"
   }
 }

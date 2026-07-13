@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "Responsabile del supporto",
+    "AssignLead": "Assegna agente",
+    "AssignLeadPlaceholder": "Cerca agenti e responsabili del supporto",
+    "AssignLeadRequest": "Richiesta di assegnazione",
+    "AssignLeadRequestPending": "Richiesta di assegnazione in attesa",
+    "AssignLeadRequestProcessing": "Richiesta di assegnazione in corso",
+    "AssignLeadRequestAwaitingReconciliation": "In attesa della riconciliazione del ticket",
+    "AssignLeadRequestFailed": "Richiesta di assegnazione non riuscita",
+    "AssignLeadRequestSuperseded": "Richiesta di assegnazione sostituita",
+    "AssignLeadConfirmed": "Assegnazione confermata"
   }
 }

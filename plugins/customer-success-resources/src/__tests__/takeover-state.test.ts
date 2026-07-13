@@ -90,6 +90,21 @@ describe('Customer Success takeover chrome state', () => {
     )
   })
 
+  it('uses the system projection Person when a current legacy Issue assignee is a social identity', () => {
+    const target = issue(
+      'ndax:status:support:TakeoverRequested',
+      'legacy-social-account' as Ref<Person>
+    )
+
+    expect(resolveTakeoverChromeState(target, projection({ claimOwner: 'person-1' as Ref<Person> }))).toEqual(
+      expect.objectContaining({
+        projectionCurrent: true,
+        claimOwner: 'person-1',
+        pendingAcknowledgement: true
+      })
+    )
+  })
+
   it('never lets projection intent report a confirmed takeover before Human Active', () => {
     const state = resolveTakeoverChromeState(
       issue('ndax:status:support:TakeoverRequested', 'person-1' as Ref<Person>),

@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "Руководитель поддержки",
+    "AssignLead": "Назначить агента",
+    "AssignLeadPlaceholder": "Найти агентов поддержки и руководителей",
+    "AssignLeadRequest": "Запрос на назначение",
+    "AssignLeadRequestPending": "Запрос на назначение в ожидании",
+    "AssignLeadRequestProcessing": "Запрос на назначение обрабатывается",
+    "AssignLeadRequestAwaitingReconciliation": "Ожидается сверка обращения",
+    "AssignLeadRequestFailed": "Не удалось выполнить запрос на назначение",
+    "AssignLeadRequestSuperseded": "Запрос на назначение заменен",
+    "AssignLeadConfirmed": "Назначение подтверждено"
   }
 }

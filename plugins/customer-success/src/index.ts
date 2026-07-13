@@ -68,7 +68,7 @@ export interface ConversationBinding extends Doc {
   schemaVersion: number
 }
 
-export type SupportActionRequestAction = 'claim_self'
+export type SupportActionRequestAction = 'claim_self' | 'assign_assignee'
 export type SupportActionRequestState = 'pending' | 'processing' | 'succeeded' | 'failed' | 'superseded'
 
 /** Human-created, system-consumed support action request in the internal projection space. */
@@ -181,6 +181,7 @@ const customerSuccess = plugin(customerSuccessId, {
     Customer: '' as IntlString,
     Bot: '' as IntlString,
     SupportAgent: '' as IntlString,
+    SupportLead: '' as IntlString,
     System: '' as IntlString,
     NoMessages: '' as IntlString,
     LoadEarlier: '' as IntlString,
@@ -227,7 +228,16 @@ const customerSuccess = plugin(customerSuccessId, {
     ClaimRequestProcessing: '' as IntlString,
     ClaimRequestAwaitingReconciliation: '' as IntlString,
     ClaimRequestFailed: '' as IntlString,
-    ClaimRequestSuperseded: '' as IntlString
+    ClaimRequestSuperseded: '' as IntlString,
+    AssignLead: '' as IntlString,
+    AssignLeadPlaceholder: '' as IntlString,
+    AssignLeadRequest: '' as IntlString,
+    AssignLeadRequestPending: '' as IntlString,
+    AssignLeadRequestProcessing: '' as IntlString,
+    AssignLeadRequestAwaitingReconciliation: '' as IntlString,
+    AssignLeadRequestFailed: '' as IntlString,
+    AssignLeadRequestSuperseded: '' as IntlString,
+    AssignLeadConfirmed: '' as IntlString
   },
   viewlet: {
     LiveInbox: '' as Ref<Viewlet>

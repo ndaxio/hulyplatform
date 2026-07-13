@@ -69,11 +69,11 @@ export function resolveTakeoverChromeState (
     projection.issueId === issue._id &&
     projection.sourceStatus === issue.status &&
     projection.stage === stage &&
-    projection.claimOwner === issue.assignee &&
     projection.observedAt >= issue.modifiedOn
+  const claimOwner = projectionCurrent ? projection.claimOwner : issue.assignee
 
   const recoveryState =
-    stage === 'takeover_requested' && issue.assignee === null
+    stage === 'takeover_requested' && claimOwner === null
       ? 'unassigned'
       : projectionCurrent && stage === 'takeover_requested'
         ? projection.recoveryState
@@ -83,7 +83,7 @@ export function resolveTakeoverChromeState (
 
   return {
     stage,
-    claimOwner: issue.assignee,
+    claimOwner,
     pendingAcknowledgement: stage === 'takeover_requested',
     confirmed,
     reconciliationPending: stage === 'human_active' && !confirmed,

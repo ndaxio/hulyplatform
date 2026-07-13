@@ -59,6 +59,16 @@
     "ClaimRequestProcessing": "Claim request processing",
     "ClaimRequestAwaitingReconciliation": "Awaiting live-session reconciliation",
     "ClaimRequestFailed": "Claim request failed",
-    "ClaimRequestSuperseded": "Claim request superseded"
+    "ClaimRequestSuperseded": "Claim request superseded",
+    "SupportLead": "支持主管",
+    "AssignLead": "分配客服",
+    "AssignLeadPlaceholder": "搜索支持客服和主管",
+    "AssignLeadRequest": "分配请求",
+    "AssignLeadRequestPending": "分配请求待处理",
+    "AssignLeadRequestProcessing": "分配请求处理中",
+    "AssignLeadRequestAwaitingReconciliation": "等待工单对账",
+    "AssignLeadRequestFailed": "分配请求失败",
+    "AssignLeadRequestSuperseded": "分配请求已被替代",
+    "AssignLeadConfirmed": "分配已确认"
   }
 }
