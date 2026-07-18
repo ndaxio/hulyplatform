@@ -1150,6 +1150,26 @@
       "projectFolder": "models/lead",
       "shouldPublish": false
     },
+    {
+      "packageName": "@hcengineering/customer-success",
+      "projectFolder": "plugins/customer-success",
+      "shouldPublish": false
+    },
+    {
+      "packageName": "@hcengineering/customer-success-resources",
+      "projectFolder": "plugins/customer-success-resources",
+      "shouldPublish": false
+    },
+    {
+      "packageName": "@hcengineering/customer-success-assets",
+      "projectFolder": "plugins/customer-success-assets",
+      "shouldPublish": false
+    },
+    {
+      "packageName": "@hcengineering/model-customer-success",
+      "projectFolder": "models/customer-success",
+      "shouldPublish": false
+    },
     // {
     //   "packageName": "@hcengineering/storybook",
     //   "projectFolder": "dev/storybook",

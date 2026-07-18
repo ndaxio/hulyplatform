@@ -198,7 +198,7 @@ export class SpacePermissionsMiddleware extends BaseMiddleware implements Middle
       return withoutMatch.forbid !== undefined ? !withoutMatch.forbid : true
     }
 
-    if (isSpace || !this.restrictedSpaces.has(space)) {
+    if (!this.restrictedSpaces.has(space)) {
       return true
     }
 

@@ -445,7 +445,7 @@
     const app = loc.path[2]
     let space = loc.path[3] as Ref<Space>
     let special = loc.path[4]
-    const fragment = loc.fragment
+    let fragment = loc.fragment
     let navigateDone = false
     if (app === undefined) {
       const last = localStorage.getItem(`${locationStorageKeyId}_${loc.path[1]}`)
@@ -497,6 +497,15 @@
       }
     }
 
+    if (currentApplication?.disablePanels === true && fragment != null && fragment.trim().length > 0) {
+      fragment = undefined
+      loc.fragment = undefined
+      closePanel()
+      if (navigate(loc)) {
+        return
+      }
+    }
+
     if (
       space === undefined &&
       ((navigatorModel?.spaces?.length ?? 0) > 0 || (navigatorModel?.specials?.length ?? 0) > 0)
@@ -533,7 +542,14 @@
     }
 
     if (app !== undefined) {
-      localStorage.setItem(`${locationStorageKeyId}_${app}`, originalLoc)
+      const storedLocation = currentApplication?.disablePanels === true ? JSON.stringify(loc) : originalLoc
+      localStorage.setItem(`${locationStorageKeyId}_${app}`, storedLocation)
+      if (currentApplication?.disablePanels === true) {
+        localStorage.setItem(locationStorageKeyId, storedLocation)
+        if (loc.path[1] !== undefined) {
+          localStorage.setItem(`${locationStorageKeyId}_${loc.path[1]}`, storedLocation)
+        }
+      }
     }
     currentQuery = loc.query
     if (fragment !== currentFragment) {

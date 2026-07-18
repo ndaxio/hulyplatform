@@ -1,0 +1,781 @@
+<!--
+// Copyright © 2026 NDAX
+//
+// Licensed under the Eclipse Public License, Version 2.0.
+-->
+<script lang="ts">
+  import contact from '@hcengineering/contact'
+  import { AssigneeBox } from '@hcengineering/contact-resources'
+  import type { AssigneeCategory } from '@hcengineering/contact-resources/src/assignee'
+  import customerSuccess, {
+    type LiveSessionState,
+    type LiveSessionStage,
+    type SupportLifecycleReasonCode,
+    type SupportActionRequest
+  } from '@hcengineering/customer-success'
+  import { DateRangeMode } from '@hcengineering/core'
+  import type { DocumentQuery, Ref } from '@hcengineering/core'
+  import type { IntlString } from '@hcengineering/platform'
+  import {
+    Button,
+    ButtonMenu,
+    Component,
+    DatePresenter,
+    Label,
+    StateTag,
+    StateType,
+    type DropdownIntlItem
+  } from '@hcengineering/ui'
+  import type { Employee, Person } from '@hcengineering/contact'
+  import type { Issue, IssueStatus } from '@hcengineering/tracker'
+
+  import { resolveTakeoverChromeState } from '../takeover-state'
+  import {
+    resolveAssignLeadControlState,
+    resolveClaimSelfControlState,
+    resolveReassignLeadControlState,
+    resolveStatusTransitionControlState,
+    resolveTerminalActionControlState,
+    isTerminalReasonAllowed,
+    shouldShowSupportActionRequestState
+  } from '../action-request'
+  import type { TerminalAction } from '../action-request'
+  import TerminalActionDialog from './TerminalActionDialog.svelte'
+
+  export let issue: Issue
+  export let assignee: Ref<Person> | null
+  export let projection: LiveSessionState | undefined
+  export let actionRequest: SupportActionRequest | undefined
+  export let currentEmployee: Person['_id'] | undefined
+  export let canManageSupportActions = false
+  export let canAssignLead = false
+  export let assigneeInActiveRoster = false
+  export let submitting = false
+  export let submissionFailed = false
+  export let lastSubmittedAction: SupportActionRequest['action'] | undefined = undefined
+  export let assignLeadCandidateQuery: DocumentQuery<Employee> | undefined = undefined
+  export let assignLeadCategories: AssigneeCategory[] = []
+  export let assignLeadSelection: Ref<Person> | null | undefined = undefined
+  export let requestClaimSelf: () => Promise<void>
+  export let requestAssignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
+  export let requestReassignLead: (assignee: Ref<Person> | null | undefined) => Promise<void>
+  export let requestTransitionStatus: (status: Ref<IssueStatus>) => Promise<void>
+  export let requestTerminalAction: (
+    snapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
+    action: TerminalAction,
+    targetStatus: Ref<IssueStatus>,
+    reasonCode: SupportLifecycleReasonCode,
+    reasonDetail: string
+  ) => Promise<boolean>
+
+  let terminalDialogAction: TerminalAction | undefined
+  let terminalDialogSnapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'> | undefined
+  let terminalDraftReasonCode: SupportLifecycleReasonCode | undefined
+  let terminalDraftReasonDetail = ''
+  let hydratedTerminalDraftRequestId: Ref<SupportActionRequest> | undefined
+
+  $: actionIssue = { ...issue, assignee }
+  $: chrome = resolveTakeoverChromeState(actionIssue, projection)
+  $: claimActionIssue = {
+    ...actionIssue,
+    assignee: chrome.projectionCurrent ? chrome.claimOwner : actionIssue.assignee
+  }
+  $: recovery = recoveryLabel(chrome.recoveryState)
+  $: claimSelf = resolveClaimSelfControlState(
+    claimActionIssue,
+    chrome,
+    actionRequest,
+    currentEmployee,
+    canManageSupportActions,
+    submitting
+  )
+  $: assignLead = resolveAssignLeadControlState(actionIssue, actionRequest, canAssignLead, submitting)
+  $: reassignLead = resolveReassignLeadControlState(
+    actionIssue,
+    actionRequest,
+    assignLeadSelection,
+    canAssignLead,
+    submitting
+  )
+  $: assigneeChange = assignLead.visible ? assignLead : reassignLead
+  $: statusTransition = resolveStatusTransitionControlState(
+    actionIssue,
+    chrome,
+    actionRequest,
+    currentEmployee,
+    canManageSupportActions,
+    submitting
+  )
+  $: terminalAction = resolveTerminalActionControlState(
+    actionIssue,
+    chrome,
+    actionRequest,
+    currentEmployee,
+    canManageSupportActions,
+    canAssignLead,
+    assigneeInActiveRoster,
+    submitting
+  )
+  $: currentTerminalRequest =
+    actionRequest?.action === 'resolve_case' || actionRequest?.action === 'reopen_case' ? actionRequest : undefined
+  $: terminalResolveProofCurrent =
+    currentEmployee !== undefined &&
+    actionIssue.assignee === currentEmployee &&
+    (
+      actionIssue.status === ('ndax:status:support:HumanActive' as Ref<IssueStatus>)
+        ? chrome.confirmed
+        : chrome.projectionCurrent && chrome.claimOwner === actionIssue.assignee
+    )
+  $: terminalReopenProofCurrent =
+    actionIssue.status === ('ndax:status:support:Resolved' as Ref<IssueStatus>) &&
+    actionIssue.assignee !== null &&
+    assigneeInActiveRoster
+  $: if (currentTerminalRequest !== undefined && hydratedTerminalDraftRequestId !== currentTerminalRequest._id) {
+    terminalDraftReasonCode = currentTerminalRequest.reasonCode
+    terminalDraftReasonDetail = currentTerminalRequest.reasonDetail ?? ''
+    hydratedTerminalDraftRequestId = currentTerminalRequest._id
+  }
+  $: if (
+    terminalDialogAction !== undefined &&
+    !terminalDialogRoleAllowed(terminalDialogAction)
+  ) {
+    closeTerminalDialog(true)
+  }
+  $: statusItems = [
+    { id: 'ndax:status:support:WaitingOnCustomer', label: customerSuccess.string.WaitingOnCustomer },
+    { id: 'ndax:status:support:WaitingOnInternal', label: customerSuccess.string.WaitingOnInternal }
+  ] satisfies DropdownIntlItem[]
+
+  function stageLabel (stage: LiveSessionStage): IntlString {
+    switch (stage) {
+      case 'bot_active':
+        return customerSuccess.string.BotActiveQueue
+      case 'shadowing':
+        return customerSuccess.string.ShadowingState
+      case 'takeover_requested':
+        return customerSuccess.string.TakeoverRequestedQueue
+      case 'human_active':
+        return customerSuccess.string.HumanActiveQueue
+      case 'other':
+        return customerSuccess.string.TakeoverState
+    }
+  }
+
+  function stageType (stage: LiveSessionStage): StateType {
+    switch (stage) {
+      case 'human_active':
+        return StateType.Positive
+      case 'takeover_requested':
+        return StateType.Primary
+      case 'shadowing':
+        return StateType.Ghost
+      default:
+        return StateType.Regular
+    }
+  }
+
+  function recoveryLabel (state: LiveSessionState['recoveryState']): IntlString | undefined {
+    switch (state) {
+      case 'unassigned':
+        return customerSuccess.string.NeedsAssignment
+      case 'unauthorized_assignee':
+        return customerSuccess.string.UnauthorizedAssignee
+      case 'lock_expired':
+        return customerSuccess.string.LockExpired
+      case 'none':
+        return undefined
+    }
+  }
+
+  function requestAction (): SupportActionRequest['action'] | undefined {
+    return actionRequest?.action ?? lastSubmittedAction
+  }
+
+  function wipeTerminalDraft (): void {
+    terminalDraftReasonCode = undefined
+    terminalDraftReasonDetail = ''
+    hydratedTerminalDraftRequestId = undefined
+  }
+
+  function terminalDialogRoleAllowed (action: TerminalAction): boolean {
+    return action === 'resolve_case' ? canManageSupportActions : canAssignLead
+  }
+
+  function terminalDialogSnapshotCurrent (
+    snapshot: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>
+  ): boolean {
+    return (
+      snapshot._id === actionIssue._id &&
+      snapshot.status === actionIssue.status &&
+      snapshot.assignee === actionIssue.assignee &&
+      snapshot.modifiedOn === actionIssue.modifiedOn
+    )
+  }
+
+  function terminalDialogProofCurrent (action: TerminalAction): boolean {
+    if (action === 'resolve_case') return terminalResolveProofCurrent
+    return terminalReopenProofCurrent
+  }
+
+  function terminalDialogStale (): boolean {
+    if (terminalDialogAction === undefined || terminalDialogSnapshot === undefined) return false
+    return !terminalDialogSnapshotCurrent(terminalDialogSnapshot) || !terminalDialogProofCurrent(terminalDialogAction)
+  }
+
+  function terminalDialogConflict (): boolean {
+    if (
+      terminalDialogAction === undefined ||
+      terminalDialogSnapshot === undefined ||
+      currentTerminalRequest === undefined ||
+      currentTerminalRequest.action !== terminalDialogAction ||
+      !terminalDialogSnapshotCurrent(terminalDialogSnapshot)
+    ) {
+      return false
+    }
+
+    return (
+      (currentTerminalRequest.state === 'failed' || currentTerminalRequest.state === 'superseded') &&
+      terminalDraftReasonCode !== undefined &&
+      currentTerminalRequest.reasonCode === terminalDraftReasonCode
+    )
+  }
+
+  function requestLabel (): IntlString | undefined {
+    if (requestAction() === 'resolve_case' || requestAction() === 'reopen_case') {
+      if (submissionFailed) return customerSuccess.string.TerminalRequestFailed
+      if (terminalAction.reconciled) return customerSuccess.string.TerminalRequestConfirmed
+      if (terminalAction.awaitingReconciliation) {
+        return customerSuccess.string.TerminalRequestAwaitingReconciliation
+      }
+      switch (terminalAction.requestState) {
+        case 'pending':
+          return customerSuccess.string.TerminalRequestPending
+        case 'processing':
+          return customerSuccess.string.TerminalRequestProcessing
+        case 'failed':
+          return customerSuccess.string.TerminalRequestFailed
+        case 'superseded':
+          return customerSuccess.string.TerminalRequestSuperseded
+        case 'succeeded':
+          return customerSuccess.string.TerminalRequestAwaitingReconciliation
+        default:
+          return undefined
+      }
+    }
+    if (requestAction() === 'transition_status') {
+      if (submissionFailed) return customerSuccess.string.StatusRequestFailed
+      if (statusTransition.reconciled) return customerSuccess.string.StatusRequestConfirmed
+      if (statusTransition.awaitingReconciliation) return customerSuccess.string.StatusRequestAwaitingReconciliation
+      switch (statusTransition.requestState) {
+        case 'pending':
+          return customerSuccess.string.StatusRequestPending
+        case 'processing':
+          return customerSuccess.string.StatusRequestProcessing
+        case 'failed':
+          return customerSuccess.string.StatusRequestFailed
+        case 'superseded':
+          return customerSuccess.string.StatusRequestSuperseded
+        case 'succeeded':
+          return customerSuccess.string.StatusRequestAwaitingReconciliation
+        default:
+          return undefined
+      }
+    }
+    if (requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') {
+      if (submissionFailed) return customerSuccess.string.AssignLeadRequestFailed
+      if (assigneeChange.reconciled) {
+        return customerSuccess.string.AssignLeadConfirmed
+      }
+      if (assigneeChange.awaitingReconciliation) {
+        return customerSuccess.string.AssignLeadRequestAwaitingReconciliation
+      }
+
+      switch (assigneeChange.requestState) {
+        case 'pending':
+          return customerSuccess.string.AssignLeadRequestPending
+        case 'processing':
+          return customerSuccess.string.AssignLeadRequestProcessing
+        case 'failed':
+          return customerSuccess.string.AssignLeadRequestFailed
+        case 'superseded':
+          return customerSuccess.string.AssignLeadRequestSuperseded
+        case 'succeeded':
+          return customerSuccess.string.AssignLeadRequestAwaitingReconciliation
+        default:
+          return undefined
+      }
+    }
+
+    if (submissionFailed) return customerSuccess.string.ClaimRequestFailed
+    if (claimSelf.awaitingReconciliation) return customerSuccess.string.ClaimRequestAwaitingReconciliation
+
+    switch (claimSelf.requestState) {
+      case 'pending':
+        return customerSuccess.string.ClaimRequestPending
+      case 'processing':
+        return customerSuccess.string.ClaimRequestProcessing
+      case 'failed':
+        return customerSuccess.string.ClaimRequestFailed
+      case 'superseded':
+        return customerSuccess.string.ClaimRequestSuperseded
+      case 'succeeded':
+        return customerSuccess.string.ClaimRequestAwaitingReconciliation
+      default:
+        return undefined
+    }
+  }
+
+  function requestLabelType (): StateType {
+    if (requestAction() === 'resolve_case' || requestAction() === 'reopen_case') {
+      if (submissionFailed) return StateType.Negative
+      if (terminalAction.reconciled) return StateType.Positive
+      if (terminalAction.awaitingReconciliation) return StateType.Ghost
+      switch (terminalAction.requestState) {
+        case 'pending':
+        case 'processing':
+          return StateType.Primary
+        case 'failed':
+          return StateType.Negative
+        case 'superseded':
+          return StateType.Regular
+        case 'succeeded':
+          return StateType.Ghost
+        default:
+          return StateType.Regular
+      }
+    }
+    if (requestAction() === 'transition_status') {
+      if (submissionFailed) return StateType.Negative
+      if (statusTransition.reconciled) return StateType.Positive
+      if (statusTransition.awaitingReconciliation) return StateType.Ghost
+      switch (statusTransition.requestState) {
+        case 'pending':
+        case 'processing':
+          return StateType.Primary
+        case 'failed':
+          return StateType.Negative
+        case 'superseded':
+          return StateType.Regular
+        case 'succeeded':
+          return StateType.Ghost
+        default:
+          return StateType.Regular
+      }
+    }
+    if (requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') {
+      if (assigneeChange.reconciled) return StateType.Positive
+      if (assigneeChange.awaitingReconciliation) return StateType.Ghost
+
+      switch (assigneeChange.requestState) {
+        case 'pending':
+        case 'processing':
+          return StateType.Primary
+        case 'failed':
+          return StateType.Negative
+        case 'superseded':
+          return StateType.Regular
+        case 'succeeded':
+          return StateType.Ghost
+        default:
+          return StateType.Regular
+      }
+    }
+
+    if (claimSelf.awaitingReconciliation) return StateType.Ghost
+
+    switch (claimSelf.requestState) {
+      case 'pending':
+      case 'processing':
+        return StateType.Primary
+      case 'failed':
+        return StateType.Negative
+      case 'superseded':
+        return StateType.Regular
+      case 'succeeded':
+        return StateType.Ghost
+      default:
+        return StateType.Regular
+    }
+  }
+
+  function requestTitleLabel (): IntlString {
+    if (requestAction() === 'resolve_case' || requestAction() === 'reopen_case') {
+      return customerSuccess.string.TerminalRequest
+    }
+    if (requestAction() === 'transition_status') return customerSuccess.string.StatusRequest
+    if (requestAction() === 'reassign_assignee') return customerSuccess.string.ReassignLead
+    if (requestAction() === 'assign_assignee') return customerSuccess.string.AssignLeadRequest
+    return customerSuccess.string.ClaimRequest
+  }
+
+  function shouldShowRequestLabel (): boolean {
+    return shouldShowSupportActionRequestState(
+      requestAction(),
+      requestLabel() !== undefined,
+      canManageSupportActions,
+      canAssignLead
+    )
+  }
+
+  function requestLabelOrFallback (): IntlString {
+    return requestLabel() ?? customerSuccess.string.ReconciliationPending
+  }
+
+  function handleAssignLeadChange (event: CustomEvent<Ref<Person> | null | undefined>): void {
+    if (event.detail == null) return
+    if (assignLead.visible && assignLead.canSubmit) {
+      void requestAssignLead(event.detail)
+    } else if (
+      resolveReassignLeadControlState(actionIssue, actionRequest, event.detail, canAssignLead, submitting).canSubmit
+    ) {
+      void requestReassignLead(event.detail)
+    }
+  }
+
+  function handleStatusSelected (event: CustomEvent<string | number>): void {
+    if (!statusTransition.canSubmit || typeof event.detail !== 'string') return
+    void requestTransitionStatus(event.detail as Ref<IssueStatus>)
+  }
+
+  function openTerminalDialog (): void {
+    if (!terminalAction.visible || terminalAction.action === undefined || terminalAction.targetStatus === undefined) {
+      return
+    }
+    terminalDialogAction = terminalAction.action
+    if (!isTerminalReasonAllowed(terminalDialogAction, terminalDraftReasonCode)) {
+      terminalDraftReasonCode = undefined
+      terminalDraftReasonDetail = ''
+    }
+    terminalDialogSnapshot = {
+      _id: actionIssue._id,
+      status: actionIssue.status,
+      assignee: actionIssue.assignee,
+      modifiedOn: actionIssue.modifiedOn
+    }
+  }
+
+  function closeTerminalDialog (wipe = false): void {
+    terminalDialogAction = undefined
+    terminalDialogSnapshot = undefined
+    if (wipe) wipeTerminalDraft()
+  }
+
+  async function confirmTerminalAction (reasonCode: SupportLifecycleReasonCode, reasonDetail: string): Promise<void> {
+    if (terminalDialogAction === undefined || terminalDialogSnapshot === undefined) {
+      return
+    }
+    if (!isTerminalReasonAllowed(terminalDialogAction, reasonCode)) return
+    const accepted = await requestTerminalAction(
+      terminalDialogSnapshot,
+      terminalDialogAction,
+      terminalDialogAction === 'resolve_case'
+        ? ('ndax:status:support:Resolved' as Ref<IssueStatus>)
+        : ('ndax:status:support:Reopened' as Ref<IssueStatus>),
+      reasonCode,
+      reasonDetail
+    )
+    if (accepted) closeTerminalDialog()
+  }
+</script>
+
+{#if chrome.stage !== 'other' || claimSelf.visible || assigneeChange.visible || statusTransition.visible || terminalAction.visible || shouldShowRequestLabel()}
+  <section
+    class="takeover-state"
+    aria-labelledby="customer-success-takeover-state-heading"
+    aria-busy={claimSelf.busy || assigneeChange.busy || statusTransition.busy || terminalAction.busy}
+  >
+    <div class="takeover-heading">
+      <div class="heading-summary">
+        <h2 id="customer-success-takeover-state-heading"><Label label={customerSuccess.string.TakeoverState} /></h2>
+        <span class="state-tag">
+          <StateTag
+            label={chrome.reconciliationPending
+              ? customerSuccess.string.ReconciliationPending
+              : stageLabel(chrome.stage)}
+            type={stageType(chrome.stage)}
+          />
+        </span>
+      </div>
+      <div class="takeover-actions">
+        {#if claimSelf.visible}
+          <Button
+            size="small"
+            kind="primary"
+            label={customerSuccess.string.ClaimSelf}
+            disabled={!claimSelf.canSubmit}
+            loading={claimSelf.busy}
+            on:click={() => {
+              void requestClaimSelf()
+            }}
+          />
+        {/if}
+        {#if assigneeChange.visible && assignLeadCandidateQuery !== undefined}
+          <div
+            class="assign-lead"
+            role="group"
+            aria-labelledby="customer-success-assign-lead-label"
+            aria-describedby={(requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee') &&
+            requestLabel() !== undefined
+              ? 'customer-success-assign-lead-status'
+              : undefined}
+            aria-disabled={!assigneeChange.canSelect}
+            aria-busy={assigneeChange.busy}
+          >
+            <span id="customer-success-assign-lead-label" class="sr-only">
+              <Label
+                label={reassignLead.visible ? customerSuccess.string.ReassignLead : customerSuccess.string.AssignLead}
+              />
+            </span>
+            <AssigneeBox
+              id="customer-success-assign-lead-picker"
+              docQuery={assignLeadCandidateQuery}
+              categories={assignLeadCategories}
+              label={reassignLead.visible ? customerSuccess.string.ReassignLead : customerSuccess.string.AssignLead}
+              placeholder={customerSuccess.string.AssignLeadPlaceholder}
+              value={assignLeadSelection}
+              allowDeselect={false}
+              size="small"
+              kind="regular"
+              width="15rem"
+              readonly={!assigneeChange.canSelect}
+              showNavigate={false}
+              justify="left"
+              on:change={handleAssignLeadChange}
+            />
+          </div>
+        {/if}
+        {#if statusTransition.visible}
+          <div
+            role="group"
+            aria-describedby={requestAction() === 'transition_status' && requestLabel() !== undefined
+              ? 'customer-success-status-request-state'
+              : undefined}
+          >
+            <ButtonMenu
+              id="customer-success-status-actions"
+              size="small"
+              label={customerSuccess.string.StatusActions}
+              items={statusItems}
+              noSelection
+              disabled={!statusTransition.canSubmit}
+              loading={statusTransition.busy}
+              on:selected={handleStatusSelected}
+            />
+          </div>
+        {/if}
+        {#if terminalAction.visible}
+          <div
+            role="group"
+            aria-describedby={requestAction() === 'resolve_case' || requestAction() === 'reopen_case'
+              ? 'customer-success-terminal-request-state'
+              : undefined}
+          >
+            <Button
+              id="customer-success-terminal-action"
+              size="small"
+              kind={terminalAction.action === 'resolve_case' ? 'negative' : 'primary'}
+              label={terminalAction.action === 'resolve_case'
+                ? customerSuccess.string.ResolveCase
+                : customerSuccess.string.ReopenCase}
+              disabled={terminalAction.busy || terminalAction.awaitingReconciliation || terminalAction.reconciled}
+              loading={terminalAction.busy}
+              on:click={openTerminalDialog}
+            />
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <dl>
+      {#if chrome.claimOwner !== null}
+        <div>
+          <dt>
+            <Label
+              label={chrome.stage === 'takeover_requested'
+                ? customerSuccess.string.ClaimOwner
+                : customerSuccess.string.Assignee}
+            />
+          </dt>
+          <dd>
+            <Component
+              is={contact.component.EmployeePresenter}
+              props={{
+                value: chrome.claimOwner,
+                disabled: true,
+                avatarSize: 'card',
+                shouldShowName: true,
+                shouldShowPlaceholder: false
+              }}
+            />
+          </dd>
+        </div>
+      {/if}
+
+      {#if chrome.pendingAcknowledgement}
+        <div>
+          <dt><Label label={customerSuccess.string.PendingAcknowledgement} /></dt>
+          <dd class="state-tag">
+            <StateTag label={customerSuccess.string.PendingAcknowledgement} type={StateType.Primary} />
+          </dd>
+        </div>
+      {:else if chrome.confirmed}
+        <div>
+          <dt><Label label={customerSuccess.string.TakeoverConfirmed} /></dt>
+          <dd class="state-tag">
+            <StateTag label={customerSuccess.string.TakeoverConfirmed} type={StateType.Positive} />
+          </dd>
+        </div>
+      {/if}
+
+      {#if chrome.expiresAt !== undefined}
+        <div>
+          <dt><Label label={customerSuccess.string.AcknowledgementExpiry} /></dt>
+          <dd><DatePresenter value={chrome.expiresAt} mode={DateRangeMode.DATETIME} kind="ghost" size="small" /></dd>
+        </div>
+      {/if}
+
+      {#if chrome.expired}
+        <div>
+          <dt><Label label={customerSuccess.string.RecoveryState} /></dt>
+          <dd class="state-tag"><StateTag label={customerSuccess.string.LockExpired} type={StateType.Negative} /></dd>
+        </div>
+      {:else if recovery !== undefined}
+        <div>
+          <dt><Label label={customerSuccess.string.RecoveryState} /></dt>
+          <dd class="state-tag"><StateTag label={recovery} type={StateType.Negative} /></dd>
+        </div>
+      {/if}
+
+      {#if shouldShowRequestLabel()}
+        <div>
+          <dt><Label label={requestTitleLabel()} /></dt>
+          <dd
+            class="state-tag"
+            id={requestAction() === 'transition_status'
+              ? 'customer-success-status-request-state'
+              : requestAction() === 'assign_assignee' || requestAction() === 'reassign_assignee'
+                ? 'customer-success-assign-lead-status'
+                : requestAction() === 'resolve_case' || requestAction() === 'reopen_case'
+                  ? 'customer-success-terminal-request-state'
+                  : undefined}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <StateTag label={requestLabelOrFallback()} type={requestLabelType()} />
+          </dd>
+        </div>
+      {/if}
+    </dl>
+  </section>
+{/if}
+
+{#if terminalDialogAction !== undefined && terminalDialogSnapshot !== undefined}
+  <TerminalActionDialog
+    action={terminalDialogAction}
+    bind:reasonCode={terminalDraftReasonCode}
+    bind:reasonDetail={terminalDraftReasonDetail}
+    {submitting}
+    stale={terminalDialogStale()}
+    conflict={terminalDialogConflict()}
+    requestState={currentTerminalRequest?.state}
+    submissionFailed={submissionFailed && (requestAction() === 'resolve_case' || requestAction() === 'reopen_case')}
+    onConfirm={confirmTerminalAction}
+    onClose={closeTerminalDialog}
+  />
+{/if}
+
+<style lang="scss">
+  .takeover-state {
+    flex: 0 0 auto;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--theme-divider-color);
+    background: var(--theme-comp-header-color);
+  }
+
+  .takeover-heading,
+  dl,
+  dl > div {
+    display: flex;
+    align-items: center;
+  }
+
+  .heading-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .takeover-heading {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+
+    h2 {
+      margin: 0;
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+  }
+
+  .takeover-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .assign-lead {
+    min-width: min(15rem, 100%);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  dl {
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin: 0.5rem 0 0;
+
+    > div {
+      min-width: 0;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    dt {
+      color: var(--theme-halfcontent-color);
+      font-size: 0.75rem;
+    }
+
+    dd {
+      min-width: 0;
+      margin: 0;
+    }
+  }
+
+  .state-tag {
+    min-width: 0;
+    max-width: 100%;
+
+    :global(.root) {
+      width: auto;
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+</style>

@@ -24,6 +24,8 @@
   export let value: string | undefined = undefined
   export let placeholder: IntlString = plugin.string.Search
   export let placeholderParam: any | undefined = undefined
+  export let ariaLabel: IntlString | undefined = undefined
+  export let clearLabel: IntlString = plugin.string.Clear
   export let collapsed: boolean = false
   export let autoFocus: boolean = false
   export let width: string | undefined = undefined
@@ -31,9 +33,17 @@
 
   let input: HTMLInputElement
   let phTranslate: string = ''
+  let translatedAriaLabel: string = ''
+  let translatedClearLabel: string = ''
 
   $: translateCB(placeholder, placeholderParam ?? {}, $themeStore.language, (res) => {
     phTranslate = res
+  })
+  $: translateCB(ariaLabel ?? placeholder, placeholderParam ?? {}, $themeStore.language, (res) => {
+    translatedAriaLabel = res
+  })
+  $: translateCB(clearLabel, {}, $themeStore.language, (res) => {
+    translatedClearLabel = res
   })
 
   $: _search = value
@@ -68,6 +78,7 @@
     class="font-regular-14"
     bind:value={_search}
     placeholder={phTranslate}
+    aria-label={translatedAriaLabel}
     autocomplete="off"
     spellcheck="false"
     on:change={() => {
@@ -85,7 +96,9 @@
     }}
   />
   <button
+    type="button"
     class="searchInput-button"
+    aria-label={translatedClearLabel}
     on:click={() => {
       value = ''
       dispatch('change', '')

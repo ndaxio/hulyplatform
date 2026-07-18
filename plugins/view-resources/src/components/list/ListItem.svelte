@@ -20,6 +20,7 @@
   import { AttributeModel } from '@hcengineering/view'
   import { createEventDispatcher, onMount } from 'svelte'
   import view from '../../plugin'
+  import { isListMutationEnabled } from '../../listReadonly'
   import GrowPresenter from './GrowPresenter.svelte'
   import ListPresenter from './ListPresenter.svelte'
 
@@ -57,6 +58,7 @@
   }
 
   function getOnChange (docObject: Doc, attribute: AttributeModel) {
+    if (!isListMutationEnabled(readonly)) return
     const attr = attribute.attribute
     if (attr === undefined) return
     if (attribute.collectionAttr) return
@@ -90,7 +92,7 @@
   class:mListGridSelected={selected}
   class:last
   class:lastCat
-  draggable={true}
+  draggable={isListMutationEnabled(readonly)}
   on:contextmenu
   on:focus
   on:mouseenter
@@ -101,11 +103,13 @@
   on:drop
   on:dragstart
 >
-  <div class="draggable-container">
-    <div class="draggable-mark">
-      <IconCircles size={'small'} />
+  {#if isListMutationEnabled(readonly)}
+    <div class="draggable-container">
+      <div class="draggable-mark">
+        <IconCircles size={'small'} />
+      </div>
     </div>
-  </div>
+  {/if}
   <div class="flex-center relative mr-1" use:tooltip={{ label: view.string.Select, direction: 'bottom' }}>
     <div class="antiList-cells__notifyCell">
       <div class="antiList-cells__checkCell">

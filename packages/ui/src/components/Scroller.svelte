@@ -1160,4 +1160,17 @@
   .disableEvents {
     pointer-events: none !important;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar,
+    .bar-horizontal,
+    .track,
+    .track-horizontal,
+    .track::after,
+    .track-horizontal::after,
+    .updown-container,
+    .scrollButton {
+      transition: none !important;
+    }
+  }
 </style>

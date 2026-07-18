@@ -46,6 +46,7 @@ export interface Application extends Doc {
 
   locationResolver?: Resource<(loc: Location) => Promise<ResolvedLocation | undefined>>
   locationDataResolver?: Resource<(loc: Location) => Promise<LocationData>>
+  disablePanels?: boolean
 
   // Component will be displayed in case navigator model is not defined, or nothing is selected in navigator model
   component?: AnyComponent
@@ -160,6 +161,7 @@ export interface NavigatorModel {
   specials?: SpecialNavModel[]
   groups?: GroupsNavModel[]
   hideStarred?: boolean
+  hideSavedViews?: boolean
 }
 
 /** @public */

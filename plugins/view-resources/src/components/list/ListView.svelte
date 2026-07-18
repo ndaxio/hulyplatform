@@ -40,6 +40,7 @@
   export let viewOptionsConfig: ViewOptionModel[] | undefined = undefined
   export let props: Record<string, any> = {}
   export let baseMenuClass: Ref<Class<Doc>> | undefined = undefined
+  export let readonly: boolean = false
 
   let list: List
   let scroll: Scroller
@@ -95,6 +96,7 @@
       {createItemEvent}
       {viewOptions}
       {props}
+      {readonly}
       {listProvider}
       compactMode={listWidth <= 800}
       viewOptionsConfig={viewOptionsConfig ?? viewlet.viewOptions?.other}

@@ -49,6 +49,7 @@
     "@hcengineering/model-chunter": "workspace:^0.7.0",
     "@hcengineering/model-recruit": "workspace:^0.7.0",
     "@hcengineering/model-lead": "workspace:^0.7.0",
+    "@hcengineering/model-customer-success": "workspace:^0.7.0",
     "@hcengineering/model-setting": "workspace:^0.7.0",
     "@hcengineering/model-telegram": "workspace:^0.7.0",
     "@hcengineering/model-server-core": "workspace:^0.7.0",
