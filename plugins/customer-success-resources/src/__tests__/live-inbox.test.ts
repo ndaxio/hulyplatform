@@ -26,6 +26,7 @@ import {
   resolveContentState,
   resolveProjectionSpaceIds,
   resolveProjectLoadState,
+  resolveLiveInboxRefreshState,
   resolveLiveInboxLocationState,
   resolveSupportProjectId
 } from '../live-inbox'
@@ -211,6 +212,26 @@ describe('Customer Success live inbox', () => {
   it('fails closed when the configured project is not visible', () => {
     expect(resolveProjectLoadState(false)).toBe('denied')
     expect(resolveProjectLoadState(true)).toBe('ready')
+  })
+
+  it('keeps last-good queue data visible and marks a transient refresh failure', () => {
+    const current = { _id: 'project:support', name: 'Customer Success' } as any
+
+    expect(resolveLiveInboxRefreshState(current, undefined, true)).toEqual({
+      state: 'ready',
+      project: current,
+      refreshFailed: true
+    })
+  })
+
+  it('fails closed when a successful refresh proves project access was revoked', () => {
+    const current = { _id: 'project:support', name: 'Customer Success' } as any
+
+    expect(resolveLiveInboxRefreshState(current, undefined, false)).toEqual({
+      state: 'denied',
+      project: undefined,
+      refreshFailed: false
+    })
   })
 
   it('resolves the standalone customer success app root to the live inbox special', () => {

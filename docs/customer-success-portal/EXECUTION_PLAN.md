@@ -136,6 +136,15 @@ after the checker records `verified: PASS` with evidence in `RUN_STATUS.md`.
    - External key: `ndax:engineering:task:customer-success-ui:realtime-refresh-and-resilience`
    - Refresh without duplicate rows/events or loss of selection, scroll, or
      draft state. Recover from network and dependency failures safely.
+   - Local checkpoint: inbox refresh keeps last-good rows mounted while bounded
+     project, viewlet, and current-filter health probes determine outage state;
+     verified access loss fails closed. Composer drafts are memory-only, bounded,
+     and account-plus-ticket scoped. Transcript updates deduplicate by immutable
+     event identity, suppress stale restores, follow the live edge only when the
+     operator is already there, and preserve the visible anchor on history prepend.
+   - Release evidence still required: authenticated outage and ACL-revocation
+     traces, rendered desktop/mobile scroll and focus checks, close/reopen draft
+     recovery, pagination failure/retry, and reconnect duplicate testing.
 
 ### Production Gate
 

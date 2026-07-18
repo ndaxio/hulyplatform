@@ -34,6 +34,15 @@ describe('Customer Success queue workspace wiring guards', () => {
     expect(source).toContain('readonly')
   })
 
+  it('keeps bounded memory-only drafts when an operator closes and reopens a ticket', () => {
+    expect(source).toContain('updateConversationComposerDraftCache(')
+    expect(source).toContain('conversationComposerDraftsForIssue(')
+    expect(source).toContain('currentAccount.uuid')
+    expect(source).toContain('{#key selectedIssueIdentifier}')
+    expect(source).toContain('initialComposerDrafts=')
+    expect(source).not.toMatch(/localStorage|sessionStorage|indexedDB/)
+  })
+
   it('connects behavior-tested keyboard navigation to a complete ARIA tab interface', () => {
     expect(source).toContain('role="tablist"')
     expect(source).toContain('role="tab"')
@@ -49,5 +58,17 @@ describe('Customer Success queue workspace wiring guards', () => {
     expect(source).toContain('{ limit: 1 }')
     expect(source).toContain('<ViewletContentView')
     expect(source).toContain('query={resultQuery}')
+  })
+
+  it('refreshes last-good queue data without unmounting the workspace on a transient outage', () => {
+    expect(source).toContain("if (project === undefined) state = 'loading'")
+    expect(source).toContain('viewletQuery.refreshClient()')
+    expect(source).toContain('contentQuery.refreshClient()')
+    expect(source).toContain('await Promise.all([')
+    expect(source).toContain('client.findOne(view.class.Viewlet')
+    expect(source).toContain('client.findAll(tracker.class.Issue, resultQuery, { limit: 1 })')
+    expect(source).toContain('resolveLiveInboxRefreshState(project, undefined, true)')
+    expect(source).toContain('class="refresh-warning"')
+    expect(source).toContain('aria-live="polite"')
   })
 })

@@ -23,6 +23,9 @@ import tracker, { type Issue, type Project } from '@hcengineering/tracker'
 const ISSUE_QUERY_IDENTIFIER_RE = /^[A-Z][A-Z0-9]*-[0-9]+$/
 export type ConversationEntryLane = 'customer' | 'bot' | 'system' | 'agent'
 export type ConversationVisibilityLane = 'public' | 'internal' | 'restricted'
+export type ConversationComposerAction = 'post_public_reply' | 'post_internal_note' | 'post_restricted_note'
+export type ConversationComposerDrafts = Record<ConversationComposerAction, string>
+export type ConversationComposerDraftCache = ReadonlyMap<string, ConversationComposerDrafts>
 export type ConversationLocationQuery = Record<string, string | null> | undefined
 export const CONVERSATION_PAGE_SIZE = 100
 
@@ -40,6 +43,21 @@ export interface ConversationCursorContext {
   spaceId: Ref<Space>
   visibility: ConversationVisibilityLane
 }
+
+export interface ConversationScrollMetrics {
+  scrollTop: number
+  scrollHeight: number
+  clientHeight: number
+}
+
+export interface ConversationScrollAnchor extends ConversationScrollMetrics {
+  atLiveEdge: boolean
+}
+
+export type ConversationScrollUpdate = 'live' | 'prepend'
+
+const CONVERSATION_LIVE_EDGE_TOLERANCE = 24
+const CONVERSATION_DRAFT_CACHE_LIMIT = 20
 
 export interface ConversationEntryDoc extends Doc {
   issueId?: Ref<Issue>
@@ -71,6 +89,78 @@ export class LatestConversationRequest {
       throw error
     }
   }
+}
+
+export function captureConversationScrollAnchor (metrics: ConversationScrollMetrics): ConversationScrollAnchor {
+  const scrollTop = Math.max(0, metrics.scrollTop)
+  const scrollHeight = Math.max(0, metrics.scrollHeight)
+  const clientHeight = Math.max(0, metrics.clientHeight)
+  const distanceFromLiveEdge = Math.max(0, scrollHeight - clientHeight - scrollTop)
+  return {
+    scrollTop,
+    scrollHeight,
+    clientHeight,
+    atLiveEdge: distanceFromLiveEdge <= CONVERSATION_LIVE_EDGE_TOLERANCE
+  }
+}
+
+export function resolveConversationScrollTop (
+  anchor: ConversationScrollAnchor,
+  nextScrollHeight: number,
+  update: ConversationScrollUpdate
+): number {
+  const boundedHeight = Math.max(0, nextScrollHeight)
+  const maxScrollTop = Math.max(0, boundedHeight - anchor.clientHeight)
+  if (update === 'live') {
+    return anchor.atLiveEdge ? maxScrollTop : Math.min(anchor.scrollTop, maxScrollTop)
+  }
+  const prependedHeight = Math.max(0, boundedHeight - anchor.scrollHeight)
+  return Math.min(anchor.scrollTop + prependedHeight, maxScrollTop)
+}
+
+export function emptyConversationComposerDrafts (): ConversationComposerDrafts {
+  return {
+    post_public_reply: '',
+    post_internal_note: '',
+    post_restricted_note: ''
+  }
+}
+
+export function conversationComposerDraftsForIssue (
+  cache: ConversationComposerDraftCache,
+  accountUuid: string,
+  issueIdentifier: string
+): ConversationComposerDrafts {
+  return {
+    ...(cache.get(conversationComposerDraftCacheKey(accountUuid, issueIdentifier)) ?? emptyConversationComposerDrafts())
+  }
+}
+
+export function updateConversationComposerDraftCache (
+  cache: ConversationComposerDraftCache,
+  accountUuid: string,
+  issueIdentifier: string,
+  action: ConversationComposerAction,
+  draft: string,
+  limit: number = CONVERSATION_DRAFT_CACHE_LIMIT
+): Map<string, ConversationComposerDrafts> {
+  const next = new Map(cache)
+  const cacheKey = conversationComposerDraftCacheKey(accountUuid, issueIdentifier)
+  const drafts = { ...(next.get(cacheKey) ?? emptyConversationComposerDrafts()), [action]: draft }
+  next.delete(cacheKey)
+  if (Object.values(drafts).some((value) => value.length > 0)) next.set(cacheKey, drafts)
+
+  const boundedLimit = Math.max(1, Math.floor(limit))
+  while (next.size > boundedLimit) {
+    const oldest = next.keys().next().value
+    if (oldest === undefined) break
+    next.delete(oldest)
+  }
+  return next
+}
+
+function conversationComposerDraftCacheKey (accountUuid: string, issueIdentifier: string): string {
+  return `${accountUuid}\u0000${issueIdentifier}`
 }
 
 export function validateIssueQueryIdentifier (identifier: string): string | undefined {

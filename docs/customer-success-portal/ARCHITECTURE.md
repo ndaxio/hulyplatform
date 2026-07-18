@@ -301,6 +301,27 @@ row after refresh, keeps the optimistic lock until the exact row is observed or
 timed out, and distinguishes stale snapshot/projection proof from a
 deterministic-id conflict on the current snapshot.
 
+## Realtime Recovery Boundary
+
+Manual inbox refresh does not unmount last-good queue content. Reactive queries
+remain the data path, while bounded project, viewlet, and current-filter probes
+drive a non-blocking outage warning. A completed probe that cannot observe the
+support project fails closed to Access Denied; a transport exception retains
+last-good content and remains a live ACL-semantics verification gate.
+
+Conversation drafts remain plaintext only in the active Workbench process. A
+bounded map scopes each bundle by current account uuid and validated ticket
+identifier, retains separate public, internal, and restricted actions, and
+evicts the least recently touched ticket after 20 entries. No browser storage is
+used. Trusted delivery evidence clears both the component draft and its parent
+cache entry.
+
+Transcript rendering merges immutable `(space, eventId)` identities. Deferred
+scroll restoration is sequence-guarded: operators at the live edge follow new
+events, operators reading older events retain their position, and history
+prepending compensates for added height. Pagination failure preserves loaded
+events and exposes an in-place retry.
+
 ## Registration Surface
 
 The package family will require registration in:

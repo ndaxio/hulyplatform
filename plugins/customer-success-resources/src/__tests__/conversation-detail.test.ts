@@ -13,6 +13,7 @@ import {
   buildConversationPageQuery,
   buildConversationIssueQuery,
   buildConversationTranscriptQuery,
+  captureConversationScrollAnchor,
   carryForwardOverlappingConversationHead,
   classifyConversationEntryLane,
   closeConversationQuery,
@@ -20,13 +21,17 @@ import {
   compareConversationEventsAscending,
   cursorForConversationEvent,
   decodeConversationCursor,
+  emptyConversationComposerDrafts,
   encodeConversationCursor,
   mergeConversationEventPages,
+  conversationComposerDraftsForIssue,
+  resolveConversationScrollTop,
   sortConversationEntriesAscending,
   sortConversationEventsAscending,
   openConversationQuery,
   LatestConversationRequest,
   validateIssueQueryIdentifier,
+  updateConversationComposerDraftCache,
   visibleConversationEntries,
   type ConversationEntryDoc
 } from '../conversation-detail'
@@ -403,6 +408,92 @@ describe('conversation detail helpers', () => {
     resolvePage(['SUP-1 older event'])
 
     await expect(stalePage).resolves.toBeUndefined()
+  })
+
+  it('keeps an operator at the live edge when realtime messages append', () => {
+    const anchor = captureConversationScrollAnchor({
+      scrollTop: 780,
+      scrollHeight: 1000,
+      clientHeight: 200
+    })
+
+    expect(resolveConversationScrollTop(anchor, 1120, 'live')).toBe(920)
+  })
+
+  it('does not move an operator reading older messages when realtime messages append', () => {
+    const anchor = captureConversationScrollAnchor({
+      scrollTop: 300,
+      scrollHeight: 1000,
+      clientHeight: 200
+    })
+
+    expect(resolveConversationScrollTop(anchor, 1120, 'live')).toBe(300)
+  })
+
+  it('preserves the visible message anchor when earlier history is prepended', () => {
+    const anchor = captureConversationScrollAnchor({
+      scrollTop: 120,
+      scrollHeight: 1000,
+      clientHeight: 200
+    })
+
+    expect(resolveConversationScrollTop(anchor, 1450, 'prepend')).toBe(570)
+  })
+
+  it('keeps memory-only composer drafts isolated by ticket and visibility action', () => {
+    let cache = new Map()
+    cache = updateConversationComposerDraftCache(cache, 'account:one', 'CSI-17', 'post_public_reply', 'Public reply')
+    cache = updateConversationComposerDraftCache(cache, 'account:one', 'CSI-17', 'post_internal_note', 'Internal note')
+    cache = updateConversationComposerDraftCache(
+      cache,
+      'account:one',
+      'CSI-18',
+      'post_restricted_note',
+      'Restricted note'
+    )
+
+    expect(conversationComposerDraftsForIssue(cache, 'account:one', 'CSI-17')).toEqual({
+      post_public_reply: 'Public reply',
+      post_internal_note: 'Internal note',
+      post_restricted_note: ''
+    })
+    expect(conversationComposerDraftsForIssue(cache, 'account:one', 'CSI-18')).toEqual({
+      post_public_reply: '',
+      post_internal_note: '',
+      post_restricted_note: 'Restricted note'
+    })
+  })
+
+  it('bounds the in-memory draft cache and evicts the least recently touched ticket', () => {
+    let cache = new Map()
+    cache = updateConversationComposerDraftCache(cache, 'account:one', 'CSI-1', 'post_public_reply', 'one', 2)
+    cache = updateConversationComposerDraftCache(cache, 'account:one', 'CSI-2', 'post_public_reply', 'two', 2)
+    cache = updateConversationComposerDraftCache(cache, 'account:one', 'CSI-1', 'post_public_reply', 'one updated', 2)
+    cache = updateConversationComposerDraftCache(cache, 'account:one', 'CSI-3', 'post_public_reply', 'three', 2)
+
+    expect(conversationComposerDraftsForIssue(cache, 'account:one', 'CSI-1').post_public_reply).toBe('one updated')
+    expect(conversationComposerDraftsForIssue(cache, 'account:one', 'CSI-2')).toEqual(emptyConversationComposerDrafts())
+    expect(conversationComposerDraftsForIssue(cache, 'account:one', 'CSI-3').post_public_reply).toBe('three')
+    expect(conversationComposerDraftsForIssue(new Map(), 'account:one', 'CSI-404')).toEqual(
+      emptyConversationComposerDrafts()
+    )
+  })
+
+  it('never hydrates sensitive drafts across account contexts in one runtime', () => {
+    const cache = updateConversationComposerDraftCache(
+      new Map(),
+      'account:one',
+      'CSI-17',
+      'post_restricted_note',
+      'Restricted evidence'
+    )
+
+    expect(conversationComposerDraftsForIssue(cache, 'account:one', 'CSI-17').post_restricted_note).toBe(
+      'Restricted evidence'
+    )
+    expect(conversationComposerDraftsForIssue(cache, 'account:two', 'CSI-17')).toEqual(
+      emptyConversationComposerDrafts()
+    )
   })
 
   it('uses modifiedOn and then _id as stable tie-breakers for ascending comparisons', () => {

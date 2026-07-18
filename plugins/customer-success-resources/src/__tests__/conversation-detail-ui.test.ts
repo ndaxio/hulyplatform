@@ -39,6 +39,21 @@ describe('conversation detail UI security contract', () => {
     expect(detailSource).not.toContain('createdBy ===')
   })
 
+  it('preserves the transcript scroll anchor across live updates and history pagination', () => {
+    expect(detailSource).toContain('bind:divScroll={conversationScroll}')
+    expect(detailSource).toContain('captureConversationScrollAnchor({')
+    expect(detailSource).toContain("refreshVisibleMessages('prepend')")
+    expect(detailSource).toContain('resolveConversationScrollTop(anchor, conversationScroll.scrollHeight, update)')
+  })
+
+  it('keeps loaded transcript data and exposes a retry when history pagination fails', () => {
+    expect(detailSource).toContain('earlierLoadFailed = false')
+    expect(detailSource).toContain('earlierLoadFailed = true')
+    expect(detailSource).toContain('{#if earlierLoadFailed}')
+    expect(detailSource).toContain('role="status"')
+    expect(detailSource).toContain('aria-live="polite"')
+  })
+
   it('reactively subscribes to issue truth and the issue-bound internal live-session projection', () => {
     expect(detailSource).toContain('issueQuery.query(')
     expect(detailSource).toContain('customerSuccess.class.LiveSessionState')
@@ -208,6 +223,14 @@ describe('conversation detail UI security contract', () => {
     expect(composerSource).toContain("data-visibility={action === 'post_restricted_note'")
     expect(composerSource).not.toContain('<select')
     expect(composerSource).not.toContain('dropdown')
+  })
+
+  it('hydrates parent-owned memory drafts without resetting them during query refresh', () => {
+    expect(detailSource).toContain('export let initialComposerDrafts')
+    expect(detailSource).toContain('export let onComposerDraftChange')
+    expect(detailSource).toContain('onComposerDraftChange(action, value)')
+    expect(detailSource).toContain('ensureComposerDeliveryIds(issue)')
+    expect(detailSource).not.toContain("composerDrafts = {\n      post_public_reply: ''")
   })
 
   it('opens detail in query state and clears panel fragments', () => {

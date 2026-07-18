@@ -16,6 +16,7 @@ import type { Person } from '@hcengineering/contact'
 import tracker, { type Issue, type IssueStatus, type Project } from '@hcengineering/tracker'
 
 export type LiveInboxContentState = 'loading' | 'empty' | 'ready'
+export type LiveInboxState = 'loading' | 'ready' | 'denied' | 'error'
 export type LiveInboxQueueView =
   | 'all'
   | 'bot-active'
@@ -171,6 +172,21 @@ export function buildLiveInboxNavigationQuery (
 
 export function resolveProjectLoadState (projectFound: boolean): 'ready' | 'denied' {
   return projectFound ? 'ready' : 'denied'
+}
+
+export function resolveLiveInboxRefreshState (
+  currentProject: Project | undefined,
+  refreshedProject: Project | undefined,
+  failed: boolean
+): { state: LiveInboxState, project: Project | undefined, refreshFailed: boolean } {
+  if (failed) {
+    return currentProject === undefined
+      ? { state: 'error', project: undefined, refreshFailed: false }
+      : { state: 'ready', project: currentProject, refreshFailed: true }
+  }
+  return refreshedProject === undefined
+    ? { state: 'denied', project: undefined, refreshFailed: false }
+    : { state: 'ready', project: refreshedProject, refreshFailed: false }
 }
 
 export function resolveContentState (

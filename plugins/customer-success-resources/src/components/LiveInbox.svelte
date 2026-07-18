@@ -6,7 +6,7 @@
 <script lang="ts">
   import customerSuccess from '@hcengineering/customer-success'
   import { getCurrentEmployee } from '@hcengineering/contact'
-  import { SortingOrder, type DocumentQuery, type WithLookup } from '@hcengineering/core'
+  import { SortingOrder, getCurrentAccount, type DocumentQuery, type WithLookup } from '@hcengineering/core'
   import inbox from '@hcengineering/inbox'
   import { getMetadata, type IntlString } from '@hcengineering/platform'
   import presentation, { createQuery, getClient } from '@hcengineering/presentation'
@@ -36,28 +36,34 @@
     nextLiveInboxQueueView,
     resolveContentState,
     resolveProjectionSpaceIds,
-    resolveProjectLoadState,
+    resolveLiveInboxRefreshState,
     resolveSupportProjectId,
     resolveLiveInboxLocationState,
-    type LiveInboxQueueView
+    type LiveInboxQueueView,
+    type LiveInboxState
   } from '../live-inbox'
-  import { closeConversationQuery } from '../conversation-detail'
+  import {
+    closeConversationQuery,
+    conversationComposerDraftsForIssue,
+    updateConversationComposerDraftCache,
+    type ConversationComposerAction,
+    type ConversationComposerDrafts
+  } from '../conversation-detail'
   import ConversationDetail from './ConversationDetail.svelte'
-
-  type InboxState = 'loading' | 'ready' | 'denied' | 'error'
 
   const client = getClient()
   const contentQuery = createQuery()
   const viewletQuery = createQuery()
   const projectId = resolveSupportProjectId(getMetadata(customerSuccess.metadata.SupportProjectId))
   const currentEmployee = getCurrentEmployee()
+  const currentAccount = getCurrentAccount()
   const projectionSpaceIds = resolveProjectionSpaceIds({
     public: getMetadata(customerSuccess.metadata.PublicProjectionSpaceId),
     internal: getMetadata(customerSuccess.metadata.InternalProjectionSpaceId),
     restricted: getMetadata(customerSuccess.metadata.RestrictedProjectionSpaceId)
   })
 
-  let state: InboxState = 'loading'
+  let state: LiveInboxState = 'loading'
   let project: Project | undefined
   let viewlet: WithLookup<Viewlet> | undefined
   let viewletLoading = true
@@ -73,6 +79,9 @@
   let filterQueryReady = false
   let contentLoading = true
   let contentCount = 0
+  let refreshing = false
+  let refreshFailed = false
+  let composerDraftCache = new Map<string, ConversationComposerDrafts>()
   $: selectedIssueIdentifier = typeof $location.query?.issue === 'string' ? $location.query.issue : undefined
   $: contentState = resolveContentState(contentLoading, contentCount, filterQueryReady)
   $: {
@@ -196,17 +205,31 @@
   }
 
   async function loadProject (): Promise<void> {
-    state = 'loading'
+    if (project === undefined) state = 'loading'
     try {
-      project = await client.findOne(tracker.class.Project, { _id: projectId })
-      state = resolveProjectLoadState(project !== undefined)
+      const contentProbe = filterQueryReady
+        ? client.findAll(tracker.class.Issue, resultQuery, { limit: 1 })
+        : Promise.resolve([])
+      const [refreshedProject, refreshedViewlet] = await Promise.all([
+        client.findOne(tracker.class.Project, { _id: projectId }),
+        client.findOne(view.class.Viewlet, { _id: customerSuccess.viewlet.LiveInbox }),
+        contentProbe
+      ])
+      if (refreshedViewlet === undefined) throw new Error('customer_success_viewlet_unavailable')
+      const refreshed = resolveLiveInboxRefreshState(project, refreshedProject, false)
+      project = refreshed.project
+      state = refreshed.state
+      refreshFailed = refreshed.refreshFailed
     } catch {
-      state = 'error'
+      const refreshed = resolveLiveInboxRefreshState(project, undefined, true)
+      project = refreshed.project
+      state = refreshed.state
+      refreshFailed = refreshed.refreshFailed
     }
   }
 
   function loadViewlet (): void {
-    viewletLoading = true
+    if (viewlet === undefined) viewletLoading = true
     viewletQuery.query(
       view.class.Viewlet,
       { _id: customerSuccess.viewlet.LiveInbox },
@@ -219,8 +242,17 @@
   }
 
   async function refreshInbox (): Promise<void> {
-    loadViewlet()
-    await loadProject()
+    if (refreshing) return
+    refreshing = true
+    refreshFailed = false
+    if (viewlet === undefined) loadViewlet()
+    else viewletQuery.refreshClient()
+    contentQuery.refreshClient()
+    try {
+      await loadProject()
+    } finally {
+      refreshing = false
+    }
   }
 
   function closeConversation (): void {
@@ -230,18 +262,38 @@
     navigate(loc)
   }
 
+  function updateCachedComposerDraft (issueIdentifier: string, action: ConversationComposerAction, draft: string): void {
+    composerDraftCache = updateConversationComposerDraftCache(
+      composerDraftCache,
+      currentAccount.uuid,
+      issueIdentifier,
+      action,
+      draft
+    )
+  }
+
   onMount(() => {
     void refreshInbox()
   })
 </script>
 
 {#if selectedIssueIdentifier !== undefined}
-  <ConversationDetail
-    {projectId}
-    {projectionSpaceIds}
-    issueIdentifier={selectedIssueIdentifier}
-    onClose={closeConversation}
-  />
+  {#key selectedIssueIdentifier}
+    <ConversationDetail
+      {projectId}
+      {projectionSpaceIds}
+      issueIdentifier={selectedIssueIdentifier}
+      initialComposerDrafts={conversationComposerDraftsForIssue(
+        composerDraftCache,
+        currentAccount.uuid,
+        selectedIssueIdentifier
+      )}
+      onComposerDraftChange={(action, draft) => {
+        updateCachedComposerDraft(selectedIssueIdentifier, action, draft)
+      }}
+      onClose={closeConversation}
+    />
+  {/key}
 {:else if state === 'loading'}
   <Loading />
 {:else if state === 'denied'}
@@ -270,10 +322,24 @@
         icon={IconRedo}
         size="small"
         tooltip={{ label: customerSuccess.string.Refresh, direction: 'bottom' }}
+        disabled={refreshing}
         on:click={refreshInbox}
       />
     </svelte:fragment>
   </Header>
+  {#if refreshFailed}
+    <div class="refresh-warning" role="status" aria-live="polite">
+      <Label label={presentation.string.FailedToPreview} />
+      <Button
+        icon={IconRedo}
+        size="small"
+        kind="ghost"
+        label={customerSuccess.string.Refresh}
+        disabled={refreshing}
+        on:click={refreshInbox}
+      />
+    </div>
+  {/if}
   <div class="queue-view-band">
     <h2 id="customer-success-queue-views" class="sr-only"><Label label={customerSuccess.string.QueueViews} /></h2>
     <div class="queue-views" role="tablist" aria-labelledby="customer-success-queue-views">
@@ -338,6 +404,18 @@
 <style lang="scss">
   .queue-view-band {
     flex: 0 0 auto;
+    border-bottom: 1px solid var(--theme-divider-color);
+  }
+
+  .refresh-warning {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    color: var(--theme-halfcontent-color);
+    background: var(--theme-comp-header-color);
     border-bottom: 1px solid var(--theme-divider-color);
   }
 

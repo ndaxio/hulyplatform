@@ -2,13 +2,13 @@
 
 run_label: `cssc-native-huly-portal-ui-r1`
 
-iteration: 18 / 20
+iteration: 19 / 20
 
 last_input: Approved production-ready native Customer Success portal plan.
 
-last_action: Implemented the local CSSC-17 restricted-note slice across the Huly portal and adapter worktrees. The portal now provides a separate text-only restricted composer whose request is stored only in the restricted projection space. UI visibility and adapter processing both require an active restricted-space SupportLead or Compliance member; successful processing creates only a restricted event and never a customer comment or internal duplicate. Duplicate request ids across internal and restricted spaces fail closed.
+last_action: Implemented the local CSSC-18 realtime recovery slice in the Huly portal. Inbox refresh now retains last-good queue content while bounded project, viewlet, and current-filter probes drive explicit outage state and proven project absence fails closed. Public, internal, and restricted drafts survive close/reopen in a bounded memory-only cache keyed by account plus ticket. Transcript updates preserve the live or historical scroll anchor, stale deferred restores are sequence-gated, and pagination failures retain loaded messages with an in-place retry.
 
-verified: CSSC-11 through CSSC-16 local certifications remain current. CSSC-17 portal resources tests pass 148/148, portal model tests pass 9/9, asset/locale tests pass 3/3, and the adapter suite records 301 passed with one existing environment-only skip. Mutation checks went red when restricted requests were redirected to the internal space, Compliance was removed from the restricted role guard, the adapter external-role guard was disabled, or the restricted projection selector was forced to internal. The UX checker approved the three-composer interaction, the security/durability checker approved the adapter authorization, storage, idempotency, summary-redaction, and cross-space conflict behavior after independently running 179 focused tests, and the cross-repository checker approved the dual-control external-authority plus restricted-roster contract. `svelte-check` reports no CSSC-17-specific error; only the previously recorded portal and upstream baseline remains.
+verified: CSSC-11 through CSSC-17 local certifications remain current. CSSC-18 portal resources tests pass 161/161. Public behavior tests cover live-edge and mid-history append behavior, prepend anchoring, ticket/action draft isolation, cache eviction, cross-account restricted-draft denial, last-good outage state, and fail-closed access revocation. Mutations that forced every reader to the live edge or disabled cache eviction both made focused tests fail. Independent UX/resilience and security/durability re-reviews approve the remediated delta with no code blockers. Repository formatting and ESLint pass on the eight changed source/test files. `svelte-check` reports no CSSC-18-specific error; only the previously recorded portal and upstream baseline remains.
 
 next_human_decision: Review the checker-certified draft PR updates. Merge, deployment, live model seed/backfill, and activation remain human gates.
 
@@ -22,8 +22,8 @@ live_workspace_id: `b55ff770-ea00-46e9-8dbd-ebb805940dd1`
 
 task_keys: `CSSC-11`, `CSSC-12`, `CSSC-13`, `CSSC-14`, `CSSC-15`, `CSSC-16`, `CSSC-17`, `CSSC-18`, `CSSC-19`, `CSSC-20`
 
-active_milestone: CSSC-17 local certification and authenticated compliance evidence preparation
+active_milestone: CSSC-18 local certification and authenticated realtime evidence preparation
 
-last_synced: `2026-07-18T10:49:26Z`
+last_synced: `2026-07-18T11:21:49Z`
 
-status: CSSC-11 and CSSC-12 remain open on their documented deployment and authenticated evidence gates. CSSC-13 remains open until authenticated desktop/mobile and screen-reader evidence plus a representative large-queue query/render trace are recorded. CSSC-14 through CSSC-16 remain locally code-complete. CSSC-17 is locally implemented and UX, security/durability, and cross-repository checker-approved, but remains open until authenticated restricted-space allow/deny retrieval, compliance-owner sign-off, export/retention policy, backup/restore proof, and a live no-leakage trace are recorded. The adapter list path intentionally requires both projection spaces to be healthy and its per-space limit means duplicate ids outside a returned polling window are detected at processing rather than listing; both require operational validation before activation. CSSC-18 realtime recovery is next. No merge, deployment, live seed/backfill, production task update, or activation.
+status: CSSC-11 through CSSC-13 remain open on their documented deployment, authenticated rendering, and performance evidence gates. CSSC-14 through CSSC-16 remain locally code-complete. CSSC-17 remains open on authenticated restricted retrieval/denial, compliance sign-off, retention/export, backup/restore, and live no-leakage evidence. CSSC-18 is locally implemented and independently checker-approved, but remains open on authenticated transport-outage versus ACL-revocation semantics, rendered desktop/mobile scroll and focus checks, close/reopen draft recovery, pagination retry, and reconnect duplicate testing. CSSC-19 production states, accessibility, localization, and performance is next. No merge, deployment, live seed/backfill, production task update, or activation.

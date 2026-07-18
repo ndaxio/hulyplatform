@@ -43,7 +43,7 @@
     SectionEmpty,
     deviceOptionsStore as deviceInfo
   } from '@hcengineering/ui'
-  import { onDestroy } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
 
   import {
     buildConversationHistoryQuery,
@@ -51,14 +51,19 @@
     buildConversationEventFindOptions,
     buildConversationPageQuery,
     buildConversationTranscriptQuery,
+    captureConversationScrollAnchor,
     carryForwardOverlappingConversationHead,
     cursorForConversationEvent,
+    emptyConversationComposerDrafts,
     LatestConversationRequest,
     mergeConversationEventPages,
+    resolveConversationScrollTop,
     sortConversationEntriesAscending,
     visibleConversationEntries,
     type ConversationEntryDoc,
     type ConversationEntryLane,
+    type ConversationComposerAction,
+    type ConversationComposerDrafts,
     type ConversationVisibilityLane
   } from '../conversation-detail'
   import {
@@ -93,6 +98,8 @@
   export let projectId: Ref<Project>
   export let projectionSpaceIds: Record<ConversationVisibilityLane, Ref<ConversationProjectionSpace>>
   export let onClose: () => void
+  export let initialComposerDrafts: ConversationComposerDrafts = emptyConversationComposerDrafts()
+  export let onComposerDraftChange: (action: ConversationComposerAction, draft: string) => void = () => {}
 
   type DetailState = 'loading' | 'ready' | 'denied' | 'error'
   type SupportConversationEvent = ConversationEvent & ConversationEntryDoc
@@ -161,6 +168,7 @@
   let history: ActivityMessage[] = []
   let transcriptLoading = true
   let earlierLoading = false
+  let earlierLoadFailed = false
   let historyLoading = true
   let mobileLane: 'conversation' | 'activity' = 'conversation'
   let canManageSupportActions = false
@@ -190,12 +198,10 @@
   let assignLeadCandidates: Array<Ref<Person>> = []
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
+  let conversationScroll: HTMLElement | undefined
+  let conversationScrollRestoreSequence = 0
   let supportActionRequestObservationTimeout: ReturnType<typeof setTimeout> | undefined
-  let composerDrafts: Record<ComposerAction, string> = {
-    post_public_reply: '',
-    post_internal_note: '',
-    post_restricted_note: ''
-  }
+  let composerDrafts: Record<ComposerAction, string> = { ...initialComposerDrafts }
   let composerDeliveryIds: Record<ComposerAction, string | undefined> = {
     post_public_reply: undefined,
     post_internal_note: undefined,
@@ -329,6 +335,7 @@
   function setComposerDraft (action: ComposerAction, value: string): void {
     const previous = composerDrafts[action]
     composerDrafts = { ...composerDrafts, [action]: value }
+    onComposerDraftChange(action, value)
     if (value !== previous) {
       composerSubmissionFailed = { ...composerSubmissionFailed, [action]: false }
     }
@@ -356,8 +363,20 @@
     }
   }
 
+  function ensureComposerDeliveryIds (target: Issue): void {
+    let changed = false
+    const next = { ...composerDeliveryIds }
+    for (const action of composerActions) {
+      if (composerDrafts[action].trim().length === 0 || next[action] !== undefined) continue
+      next[action] = conversationMessageDeliveryId(target._id, currentAccount.uuid, action, generateId())
+      changed = true
+    }
+    if (changed) composerDeliveryIds = next
+  }
+
   function stopLaneQueries (): void {
     paginationRequest.invalidate()
+    conversationScrollRestoreSequence += 1
     for (const query of Object.values(transcriptQueries)) query.unsubscribe()
     for (const query of Object.values(composerRequestQueries)) query.unsubscribe()
     historyQuery.unsubscribe()
@@ -367,6 +386,7 @@
     transcriptLaneLoaded = { public: false, internal: false, restricted: false }
     canLoadEarlier = { public: false, internal: false, restricted: false }
     earlierLoading = false
+    earlierLoadFailed = false
     history = []
     subscribedIssueId = undefined
     trackedSupportActionRequestId = undefined
@@ -383,11 +403,6 @@
     clearSupportActionRequestObservationTimeout()
     for (const action of composerActions) {
       clearComposerObservationTimeout(action)
-    }
-    composerDrafts = {
-      post_public_reply: '',
-      post_internal_note: '',
-      post_restricted_note: ''
     }
     composerDeliveryIds = {
       post_public_reply: undefined,
@@ -665,16 +680,31 @@
     }
   }
 
-  function refreshVisibleMessages (): void {
+  function refreshVisibleMessages (update: 'live' | 'prepend' = 'live'): void {
+    const anchor =
+      conversationScroll === undefined
+        ? undefined
+        : captureConversationScrollAnchor({
+          scrollTop: conversationScroll.scrollTop,
+          scrollHeight: conversationScroll.scrollHeight,
+          clientHeight: conversationScroll.clientHeight
+        })
     visibleMessages = visibleConversationEntries(
       mergeConversationEventPages(...Object.values(headMessages), ...Object.values(historicalMessages))
     )
+    if (anchor === undefined) return
+    const sequence = ++conversationScrollRestoreSequence
+    void tick().then(() => {
+      if (sequence !== conversationScrollRestoreSequence || conversationScroll === undefined) return
+      conversationScroll.scrollTop = resolveConversationScrollTop(anchor, conversationScroll.scrollHeight, update)
+    })
   }
 
   async function loadEarlierMessages (): Promise<void> {
     if (issue === undefined || earlierLoading) return
     const targetId = issue._id
     earlierLoading = true
+    earlierLoadFailed = false
     try {
       const result = await paginationRequest.run(async () => {
         let nextHistorical = { ...historicalMessages }
@@ -711,7 +741,9 @@
       if (result === undefined || issue?._id !== targetId) return
       historicalMessages = result.historicalMessages
       canLoadEarlier = result.canLoadEarlier
-      refreshVisibleMessages()
+      refreshVisibleMessages('prepend')
+    } catch {
+      if (issue?._id === targetId) earlierLoadFailed = true
     } finally {
       if (issue?._id === targetId) earlierLoading = false
     }
@@ -1183,6 +1215,7 @@
     const canonicalState = resolveTakeoverChromeState({ ...issue, assignee: cachedAssignee }, liveSessionState)
     canonicalIssueAssignee = canonicalState.projectionCurrent ? canonicalState.claimOwner : cachedAssignee
   }
+  $: if (issue !== undefined) ensureComposerDeliveryIds(issue)
   $: if (issue !== undefined && shouldReleaseActiveSupportActionRequest(supportActionRequest, issue.modifiedOn)) {
     releaseStaleSupportActionRequest()
   }
@@ -1208,7 +1241,7 @@
       )
     )
   ) {
-    composerDrafts = { ...composerDrafts, post_public_reply: '' }
+    if (composerDrafts.post_public_reply !== '') setComposerDraft('post_public_reply', '')
     composerDeliveryIds = { ...composerDeliveryIds, post_public_reply: undefined }
   }
   $: if (
@@ -1220,7 +1253,7 @@
       )
     )
   ) {
-    composerDrafts = { ...composerDrafts, post_internal_note: '' }
+    if (composerDrafts.post_internal_note !== '') setComposerDraft('post_internal_note', '')
     composerDeliveryIds = { ...composerDeliveryIds, post_internal_note: undefined }
   }
   $: if (
@@ -1232,7 +1265,7 @@
       )
     )
   ) {
-    composerDrafts = { ...composerDrafts, post_restricted_note: '' }
+    if (composerDrafts.post_restricted_note !== '') setComposerDraft('post_restricted_note', '')
     composerDeliveryIds = { ...composerDeliveryIds, post_restricted_note: undefined }
   }
   $: if (state === 'ready' && issue !== undefined) {
@@ -1393,18 +1426,25 @@
       >
         <div class="lane-header">
           <h2 id="customer-success-conversation-heading"><Label label={customerSuccess.string.Conversation} /></h2>
-          {#if Object.values(canLoadEarlier).some(Boolean)}
-            <Button
-              size="small"
-              kind="ghost"
-              label={customerSuccess.string.LoadEarlier}
-              disabled={earlierLoading}
-              on:click={loadEarlierMessages}
-            />
-          {/if}
+          <div class="lane-actions">
+            {#if earlierLoadFailed}
+              <span class="load-earlier-failed" role="status" aria-live="polite">
+                <Label label={presentation.string.FailedToPreview} />
+              </span>
+            {/if}
+            {#if Object.values(canLoadEarlier).some(Boolean)}
+              <Button
+                size="small"
+                kind="ghost"
+                label={customerSuccess.string.LoadEarlier}
+                disabled={earlierLoading}
+                on:click={loadEarlierMessages}
+              />
+            {/if}
+          </div>
         </div>
         <div class="lane-scroll">
-          <Scroller padding="0 1rem 1rem">
+          <Scroller padding="0 1rem 1rem" bind:divScroll={conversationScroll}>
             {#if transcriptLoading}
               <Loading />
             {:else if visibleMessages.length === 0}
@@ -1670,6 +1710,17 @@
   .lane-scroll {
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  .lane-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .load-earlier-failed {
+    color: var(--theme-halfcontent-color);
+    font-size: 0.75rem;
   }
 
   .message-list,
