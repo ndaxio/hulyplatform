@@ -142,10 +142,12 @@ describe('Customer Success live inbox', () => {
     })
   })
 
-  it('moves queue focus in both directions and wraps without reacting to unrelated keys', () => {
+  it('moves queue focus with arrows and boundaries without reacting to unrelated keys', () => {
     expect(nextLiveInboxQueueView('all', 'ArrowRight')).toBe('bot-active')
     expect(nextLiveInboxQueueView('all', 'ArrowLeft')).toBe('resolved')
     expect(nextLiveInboxQueueView('resolved', 'ArrowRight')).toBe('all')
+    expect(nextLiveInboxQueueView('mine', 'Home')).toBe('all')
+    expect(nextLiveInboxQueueView('mine', 'End')).toBe('resolved')
     expect(nextLiveInboxQueueView('mine', 'Enter')).toBeUndefined()
   })
 

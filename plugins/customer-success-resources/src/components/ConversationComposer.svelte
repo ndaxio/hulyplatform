@@ -47,6 +47,11 @@
     dispatch('submit')
   }
 
+  function restoreComposerFocus (): void {
+    const target = previousFocus !== null && document.contains(previousFocus) ? previousFocus : textareaElement
+    target?.focus()
+  }
+
   function statusLabel (): IntlString | undefined {
     switch (status) {
       case 'sending':
@@ -68,7 +73,7 @@
     if (status === 'failed') {
       textareaElement?.focus()
     } else if (status === 'delivered' || status === 'suppressed') {
-      previousFocus?.focus()
+      restoreComposerFocus()
     }
     previousStatus = status
   }

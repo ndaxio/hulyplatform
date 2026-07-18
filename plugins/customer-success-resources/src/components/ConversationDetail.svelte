@@ -47,6 +47,8 @@
 
   import {
     buildConversationHistoryQuery,
+    buildConversationHistoryFindOptions,
+    buildConversationHistoryPageQuery,
     buildConversationIssueQuery,
     buildConversationEventFindOptions,
     buildConversationPageQuery,
@@ -57,6 +59,8 @@
     emptyConversationComposerDrafts,
     LatestConversationRequest,
     mergeConversationEventPages,
+    mergeConversationHistoryPages,
+    nextConversationDetailLane,
     resolveConversationScrollTop,
     sortConversationEntriesAscending,
     visibleConversationEntries,
@@ -131,6 +135,7 @@
   }
   const historyQuery = createQuery()
   const paginationRequest = new LatestConversationRequest()
+  const historyPaginationRequest = new LatestConversationRequest()
   const currentAccount = getCurrentAccount()
   const currentEmployee = getCurrentEmployee()
   const hierarchy = client.getHierarchy()
@@ -170,6 +175,9 @@
   let earlierLoading = false
   let earlierLoadFailed = false
   let historyLoading = true
+  let historyCanLoadEarlier = false
+  let historyEarlierLoading = false
+  let historyEarlierLoadFailed = false
   let mobileLane: 'conversation' | 'activity' = 'conversation'
   let canManageSupportActions = false
   let canManageRestrictedActions = false
@@ -199,6 +207,7 @@
   let conversationTab: HTMLButtonElement
   let activityTab: HTMLButtonElement
   let conversationScroll: HTMLElement | undefined
+  let activityScroll: HTMLElement | undefined
   let conversationScrollRestoreSequence = 0
   let supportActionRequestObservationTimeout: ReturnType<typeof setTimeout> | undefined
   let composerDrafts: Record<ComposerAction, string> = { ...initialComposerDrafts }
@@ -376,6 +385,7 @@
 
   function stopLaneQueries (): void {
     paginationRequest.invalidate()
+    historyPaginationRequest.invalidate()
     conversationScrollRestoreSequence += 1
     for (const query of Object.values(transcriptQueries)) query.unsubscribe()
     for (const query of Object.values(composerRequestQueries)) query.unsubscribe()
@@ -388,6 +398,9 @@
     earlierLoading = false
     earlierLoadFailed = false
     history = []
+    historyCanLoadEarlier = false
+    historyEarlierLoading = false
+    historyEarlierLoadFailed = false
     subscribedIssueId = undefined
     trackedSupportActionRequestId = undefined
     trackedSupportActionRequestHydrationKey = undefined
@@ -434,6 +447,15 @@
       post_internal_note: false,
       post_restricted_note: false
     }
+  }
+
+  function stopAllQueries (): void {
+    stopLaneQueries()
+    issueQuery.unsubscribe()
+    statusQuery.unsubscribe()
+    liveSessionQuery.unsubscribe()
+    internalProjectionSpaceQuery.unsubscribe()
+    restrictedProjectionSpaceQuery.unsubscribe()
   }
 
   function clearSupportActionRequestObservationTimeout (): void {
@@ -685,10 +707,10 @@
       conversationScroll === undefined
         ? undefined
         : captureConversationScrollAnchor({
-          scrollTop: conversationScroll.scrollTop,
-          scrollHeight: conversationScroll.scrollHeight,
-          clientHeight: conversationScroll.clientHeight
-        })
+            scrollTop: conversationScroll.scrollTop,
+            scrollHeight: conversationScroll.scrollHeight,
+            clientHeight: conversationScroll.clientHeight
+          })
     visibleMessages = visibleConversationEntries(
       mergeConversationEventPages(...Object.values(headMessages), ...Object.values(historicalMessages))
     )
@@ -757,11 +779,44 @@
       buildConversationHistoryQuery(projectId, target._id) as DocumentQuery<ActivityMessage>,
       (result) => {
         if (issue?._id !== targetId) return
-        history = sortConversationEntriesAscending(result as Array<ActivityMessage & ConversationEntryDoc>)
+        history = sortConversationEntriesAscending(result as unknown as ActivityMessage[])
+        historyCanLoadEarlier = result.length === buildConversationHistoryFindOptions().limit
         historyLoading = false
       },
-      { sort: { createdOn: SortingOrder.Ascending } }
+      buildConversationHistoryFindOptions()
     )
+  }
+
+  async function loadEarlierHistory (): Promise<void> {
+    if (issue === undefined || historyEarlierLoading || !historyCanLoadEarlier) return
+    const targetId = issue._id
+    const oldest = history[0]
+    if (oldest === undefined) return
+    const query = buildConversationHistoryPageQuery(projectId, targetId, oldest)
+    if (query === undefined) {
+      historyCanLoadEarlier = false
+      return
+    }
+
+    historyEarlierLoading = true
+    historyEarlierLoadFailed = false
+    try {
+      const page = await historyPaginationRequest.run(
+        async () =>
+          (await client.findAll(
+            activity.class.ActivityMessage,
+            query as DocumentQuery<ActivityMessage>,
+            buildConversationHistoryFindOptions()
+          )) as unknown as ActivityMessage[]
+      )
+      if (page === undefined || issue?._id !== targetId) return
+      history = mergeConversationHistoryPages(history, page)
+      historyCanLoadEarlier = page.length === buildConversationHistoryFindOptions().limit
+    } catch {
+      if (issue?._id === targetId) historyEarlierLoadFailed = true
+    } finally {
+      if (issue?._id === targetId) historyEarlierLoading = false
+    }
   }
 
   function laneLabel (lane: ConversationEntryLane): IntlString {
@@ -798,12 +853,25 @@
   }
 
   function handleMobileLaneKeydown (event: KeyboardEvent): void {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    const nextLane = nextConversationDetailLane(mobileLane, event.key)
+    if (nextLane === undefined) return
     event.preventDefault()
-    selectMobileLane(mobileLane === 'conversation' ? 'activity' : 'conversation', true)
+    selectMobileLane(nextLane, true)
   }
 
+  function configureTimelineRegion (element: HTMLElement | undefined, labelledBy: string): void {
+    if (element === undefined) return
+    element.tabIndex = 0
+    element.setAttribute('role', 'region')
+    element.setAttribute('aria-labelledby', labelledBy)
+  }
+
+  $: configureTimelineRegion(conversationScroll, 'customer-success-conversation-heading')
+  $: configureTimelineRegion(activityScroll, 'customer-success-activity-heading')
+
   function refreshDetail (): void {
+    paginationRequest.invalidate()
+    historyPaginationRequest.invalidate()
     issueQuery.refreshClient()
     statusQuery.refreshClient()
     liveSessionQuery.refreshClient()
@@ -1311,9 +1379,7 @@
     supportActionRequestHydrationQuery.unsubscribe()
   }
 
-  onDestroy(() => {
-    clearSupportActionRequestObservationTimeout()
-  })
+  onDestroy(stopAllQueries)
 </script>
 
 <div class="detail-shell">
@@ -1444,7 +1510,10 @@
           </div>
         </div>
         <div class="lane-scroll">
-          <Scroller padding="0 1rem 1rem" bind:divScroll={conversationScroll}>
+          <Scroller
+            padding="0 1rem 1rem"
+            bind:divScroll={conversationScroll}
+          >
             {#if transcriptLoading}
               <Loading />
             {:else if visibleMessages.length === 0}
@@ -1542,9 +1611,25 @@
       >
         <div class="lane-header">
           <h2 id="customer-success-activity-heading"><Label label={customerSuccess.string.Activity} /></h2>
+          <div class="lane-actions">
+            {#if historyEarlierLoadFailed}
+              <span class="load-earlier-failed" role="status" aria-live="polite">
+                <Label label={presentation.string.FailedToPreview} />
+              </span>
+            {/if}
+            {#if historyCanLoadEarlier}
+              <Button
+                size="small"
+                kind="ghost"
+                label={customerSuccess.string.LoadEarlier}
+                disabled={historyEarlierLoading}
+                on:click={loadEarlierHistory}
+              />
+            {/if}
+          </div>
         </div>
         <div class="lane-scroll">
-          <Scroller padding="0 1rem 1rem">
+          <Scroller padding="0 1rem 1rem" bind:divScroll={activityScroll}>
             {#if historyLoading}
               <Loading />
             {:else if history.length === 0}
@@ -1552,17 +1637,19 @@
             {:else}
               <div class="activity-list">
                 {#each history as item (item._id)}
-                  <Component
-                    is={activity.component.ActivityMessagePresenter}
-                    props={{
-                      value: item,
-                      doc: issue,
-                      hideLink: true,
-                      readonly: true,
-                      withActions: false,
-                      withShowMore: true
-                    }}
-                  />
+                  <div class="activity-row">
+                    <Component
+                      is={activity.component.ActivityMessagePresenter}
+                      props={{
+                        value: item,
+                        doc: issue,
+                        hideLink: true,
+                        readonly: true,
+                        withActions: false,
+                        withShowMore: true
+                      }}
+                    />
+                  </div>
                 {/each}
               </div>
             {/if}
@@ -1748,6 +1835,13 @@
     &.restricted {
       border-width: 2px;
     }
+  }
+
+  .message-row,
+  .activity-row {
+    content-visibility: auto;
+    contain: layout paint style;
+    contain-intrinsic-size: auto 6rem;
   }
 
   .visibility-label {

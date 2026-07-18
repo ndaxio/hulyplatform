@@ -24,10 +24,12 @@ const ISSUE_QUERY_IDENTIFIER_RE = /^[A-Z][A-Z0-9]*-[0-9]+$/
 export type ConversationEntryLane = 'customer' | 'bot' | 'system' | 'agent'
 export type ConversationVisibilityLane = 'public' | 'internal' | 'restricted'
 export type ConversationComposerAction = 'post_public_reply' | 'post_internal_note' | 'post_restricted_note'
+export type ConversationDetailLane = 'conversation' | 'activity'
 export type ConversationComposerDrafts = Record<ConversationComposerAction, string>
 export type ConversationComposerDraftCache = ReadonlyMap<string, ConversationComposerDrafts>
 export type ConversationLocationQuery = Record<string, string | null> | undefined
 export const CONVERSATION_PAGE_SIZE = 100
+export const CONVERSATION_HISTORY_PAGE_SIZE = 100
 
 export interface ConversationCursorV1 {
   v: 1
@@ -54,6 +56,16 @@ export interface ConversationScrollAnchor extends ConversationScrollMetrics {
   atLiveEdge: boolean
 }
 
+export interface ConversationSortableEntry {
+  _id: unknown
+  createdOn?: Timestamp
+  modifiedOn?: Timestamp
+}
+
+export interface ConversationHistoryEntry extends ConversationSortableEntry {
+  space: unknown
+}
+
 export type ConversationScrollUpdate = 'live' | 'prepend'
 
 const CONVERSATION_LIVE_EDGE_TOLERANCE = 24
@@ -68,8 +80,6 @@ export interface ConversationEntryDoc extends Doc {
   attachedToClass?: Ref<Class<Issue>>
   collection?: string
   space: Ref<Space>
-  createdOn?: Timestamp
-  modifiedOn?: Timestamp
 }
 
 export class LatestConversationRequest {
@@ -89,6 +99,16 @@ export class LatestConversationRequest {
       throw error
     }
   }
+}
+
+export function nextConversationDetailLane (
+  current: ConversationDetailLane,
+  key: string
+): ConversationDetailLane | undefined {
+  if (key === 'Home') return 'conversation'
+  if (key === 'End') return 'activity'
+  if (key !== 'ArrowLeft' && key !== 'ArrowRight') return undefined
+  return current === 'conversation' ? 'activity' : 'conversation'
 }
 
 export function captureConversationScrollAnchor (metrics: ConversationScrollMetrics): ConversationScrollAnchor {
@@ -212,7 +232,7 @@ export function buildConversationTranscriptQuery (
 
 export function buildConversationEventFindOptions (): {
   limit: number
-  sort: { occurredAt: SortingOrder, eventId: SortingOrder }
+  sort: { occurredAt: SortingOrder; eventId: SortingOrder }
 } {
   return {
     limit: CONVERSATION_PAGE_SIZE,
@@ -233,8 +253,36 @@ export function buildConversationHistoryQuery (
     attachedToClass: tracker.class.Issue,
     collection: { $ne: 'comments' },
     _class: {
-      $ne: 'chunter:class:ChatMessage'
+      $ne: 'chunter:class:ChatMessage' as Ref<Class<ConversationEntryDoc>>
     }
+  }
+}
+
+export function buildConversationHistoryFindOptions (): {
+  limit: number
+  sort: { createdOn: SortingOrder; _id: SortingOrder }
+} {
+  return {
+    limit: CONVERSATION_HISTORY_PAGE_SIZE,
+    sort: {
+      createdOn: SortingOrder.Descending,
+      _id: SortingOrder.Descending
+    }
+  }
+}
+
+export function buildConversationHistoryPageQuery (
+  projectId: Ref<Project>,
+  issueId: Ref<Issue>,
+  oldest: Pick<ConversationSortableEntry, '_id' | 'createdOn'>
+): DocumentQuery<ConversationEntryDoc> | undefined {
+  if (typeof oldest.createdOn !== 'number') return undefined
+  return {
+    ...buildConversationHistoryQuery(projectId, issueId),
+    $or: [
+      { createdOn: { $lt: oldest.createdOn } },
+      { createdOn: oldest.createdOn, _id: { $lt: oldest._id as Ref<ConversationEntryDoc> } }
+    ]
   }
 }
 
@@ -260,7 +308,7 @@ export function classifyConversationEntryLane (
 
 export function visibleConversationEntries<
   T extends ConversationEntryDoc & Pick<ConversationEvent, 'eventId' | 'occurredAt'>
-> (entries: T[]): Array<{ message: T, lane: ConversationEntryLane, visibility: ConversationVisibilityLane }> {
+>(entries: T[]): Array<{ message: T; lane: ConversationEntryLane; visibility: ConversationVisibilityLane }> {
   return sortConversationEventsAscending(entries).flatMap((message) => {
     const lane = classifyConversationEntryLane(message)
     return lane === undefined ? [] : [{ message, lane, visibility: message.visibility as ConversationVisibilityLane }]
@@ -326,7 +374,7 @@ export function cursorForConversationEvent (
 
 export function mergeConversationEventPages<
   T extends ConversationEntryDoc & Pick<ConversationEvent, 'eventId' | 'occurredAt'>
-> (...pages: T[][]): T[] {
+>(...pages: T[][]): T[] {
   const byIdentity = new Map<string, T>()
   for (const event of pages.flat()) {
     byIdentity.set(`${String(event.space)}\u0000${event.eventId}`, event)
@@ -334,9 +382,17 @@ export function mergeConversationEventPages<
   return sortConversationEventsAscending([...byIdentity.values()])
 }
 
+export function mergeConversationHistoryPages<T extends ConversationHistoryEntry> (...pages: T[][]): T[] {
+  const byIdentity = new Map<string, T>()
+  for (const entry of pages.flat()) {
+    byIdentity.set(`${String(entry.space)}\u0000${String(entry._id)}`, entry)
+  }
+  return sortConversationEntriesAscending([...byIdentity.values()])
+}
+
 export function carryForwardOverlappingConversationHead<
   T extends ConversationEntryDoc & Pick<ConversationEvent, 'eventId' | 'occurredAt'>
-> (historical: T[], previousHead: T[], nextHead: T[]): T[] {
+>(historical: T[], previousHead: T[], nextHead: T[]): T[] {
   if (previousHead.length === 0) return historical
   const nextIdentities = new Set(nextHead.map(conversationEventIdentity))
   if (!previousHead.some((event) => nextIdentities.has(conversationEventIdentity(event)))) return []
@@ -404,17 +460,17 @@ export function sortConversationEventsAscending<T extends Pick<ConversationEvent
   return [...entries].sort(compareConversationEventsAscending)
 }
 
-function getCreatedSortValue (entry: Pick<ConversationEntryDoc, 'createdOn' | 'modifiedOn'>): number {
+function getCreatedSortValue (entry: Pick<ConversationSortableEntry, 'createdOn' | 'modifiedOn'>): number {
   return entry.createdOn ?? entry.modifiedOn ?? 0
 }
 
-function getModifiedSortValue (entry: Pick<ConversationEntryDoc, 'createdOn' | 'modifiedOn'>): number {
+function getModifiedSortValue (entry: Pick<ConversationSortableEntry, 'createdOn' | 'modifiedOn'>): number {
   return entry.modifiedOn ?? entry.createdOn ?? 0
 }
 
 export function compareConversationEntriesAscending (
-  left: Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'>,
-  right: Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'>
+  left: ConversationSortableEntry,
+  right: ConversationSortableEntry
 ): number {
   const createdDiff = getCreatedSortValue(left) - getCreatedSortValue(right)
   if (createdDiff !== 0) return createdDiff
@@ -425,8 +481,6 @@ export function compareConversationEntriesAscending (
   return String(left._id).localeCompare(String(right._id))
 }
 
-export function sortConversationEntriesAscending<
-  T extends Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'>
-> (entries: T[]): T[] {
+export function sortConversationEntriesAscending<T extends ConversationSortableEntry> (entries: T[]): T[] {
   return [...entries].sort(compareConversationEntriesAscending)
 }

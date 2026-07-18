@@ -8,6 +8,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const source = readFileSync(join(__dirname, '..', 'components', 'LiveInbox.svelte'), 'utf8')
+const searchInputSource = readFileSync(
+  join(__dirname, '..', '..', '..', '..', 'packages', 'ui', 'src', 'components', 'SearchInput.svelte'),
+  'utf8'
+)
 const filterButtonSource = readFileSync(
   join(__dirname, '..', '..', '..', 'view-resources', 'src', 'components', 'filter', 'FilterButton.svelte'),
   'utf8'
@@ -52,6 +56,19 @@ describe('Customer Success queue workspace wiring guards', () => {
     expect(source).toMatch(/aria-labelledby=\{`customer-success-queue-tab-\$\{activeQueueView\}`\}/)
     expect(source).toContain('emptyViewLabel(activeQueueView)')
     expect(source).toContain('overflow-x: auto')
+  })
+
+  it('uses an explicitly named header refresh command instead of a tooltip-only icon', () => {
+    expect(source).not.toContain('<ButtonIcon')
+    expect(source).toMatch(/slot="actions"[\s\S]*?<Button[\s\S]*?label=\{customerSuccess\.string\.Refresh\}/)
+  })
+
+  it('gives the native search and clear controls localized accessible names', () => {
+    expect(searchInputSource).toContain('export let ariaLabel: IntlString | undefined = undefined')
+    expect(searchInputSource).toContain('export let clearLabel: IntlString = plugin.string.Clear')
+    expect(searchInputSource).toContain('aria-label={translatedAriaLabel}')
+    expect(searchInputSource).toContain('aria-label={translatedClearLabel}')
+    expect(searchInputSource).toContain('type="button"')
   })
 
   it('keeps large-queue counting bounded and delegates row rendering to the native viewlet', () => {

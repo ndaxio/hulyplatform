@@ -14,6 +14,10 @@ const presenterSource = readFileSync(join(componentDir, 'TicketPresenter.svelte'
 const inboxSource = readFileSync(join(componentDir, 'LiveInbox.svelte'), 'utf8')
 const takeoverSource = readFileSync(join(componentDir, 'TakeoverStateChrome.svelte'), 'utf8')
 const terminalDialogSource = readFileSync(join(componentDir, 'TerminalActionDialog.svelte'), 'utf8')
+const scrollerSource = readFileSync(
+  join(__dirname, '..', '..', '..', '..', 'packages', 'ui', 'src', 'components', 'Scroller.svelte'),
+  'utf8'
+)
 
 describe('conversation detail UI security contract', () => {
   it('uses project-scoped read-only queries and separates transcript from activity', () => {
@@ -52,6 +56,23 @@ describe('conversation detail UI security contract', () => {
     expect(detailSource).toContain('{#if earlierLoadFailed}')
     expect(detailSource).toContain('role="status"')
     expect(detailSource).toContain('aria-live="polite"')
+  })
+
+  it('bounds activity history, drops stale pagination, and virtualizes off-screen rows', () => {
+    expect(detailSource).toContain('buildConversationHistoryFindOptions()')
+    expect(detailSource).toContain('buildConversationHistoryPageQuery(projectId, targetId, oldest)')
+    expect(detailSource).toContain('historyPaginationRequest.invalidate()')
+    expect(detailSource).toContain('mergeConversationHistoryPages(history, page)')
+    expect(detailSource).toContain('historyEarlierLoadFailed = true')
+    expect(detailSource).toContain('content-visibility: auto')
+    expect(detailSource).toContain('contain-intrinsic-size: auto')
+  })
+
+  it('invalidates in-flight pages during refresh and unsubscribes every query on destroy', () => {
+    expect(detailSource).toMatch(/function refreshDetail[\s\S]*?paginationRequest\.invalidate\(\)/)
+    expect(detailSource).toMatch(/function refreshDetail[\s\S]*?historyPaginationRequest\.invalidate\(\)/)
+    expect(detailSource).toContain('function stopAllQueries')
+    expect(detailSource).toContain('onDestroy(stopAllQueries)')
   })
 
   it('reactively subscribes to issue truth and the issue-bound internal live-session projection', () => {
@@ -211,7 +232,8 @@ describe('conversation detail UI security contract', () => {
     expect(composerSource).toContain('aria-live="polite"')
     expect(composerSource).toContain('translateCB(placeholder')
     expect(composerSource).toContain('maxlength={conversationComposerMessageMaxLength}')
-    expect(composerSource).toContain('previousFocus?.focus()')
+    expect(composerSource).toContain('document.contains(previousFocus)')
+    expect(composerSource).toContain('target?.focus()')
     expect(composerSource).toContain('customerSuccess.string.ConversationComposerSending')
     expect(composerSource).toContain('customerSuccess.string.ConversationComposerDelivered')
     expect(composerSource).toContain('customerSuccess.string.ConversationComposerSuppressed')
@@ -252,8 +274,19 @@ describe('conversation detail UI security contract', () => {
     expect(detailSource).toContain('role="tablist"')
     expect(detailSource).toContain('aria-labelledby="customer-success-detail-views"')
     expect(detailSource).toContain('role="tab"')
-    expect(detailSource).toContain("event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'")
+    expect(detailSource).toContain('nextConversationDetailLane(mobileLane, event.key)')
     expect(detailSource).toContain("role={$deviceInfo.isMobile ? 'tabpanel' : undefined}")
+  })
+
+  it('makes both long operator timelines keyboard-scrollable and heading-labelled', () => {
+    expect(detailSource).toContain("element.setAttribute('role', 'region')")
+    expect(detailSource).toContain("element.setAttribute('aria-labelledby', labelledBy)")
+    expect(detailSource).toContain('element.tabIndex = 0')
+    expect(detailSource).toContain("configureTimelineRegion(conversationScroll, 'customer-success-conversation-heading')")
+    expect(detailSource).toContain("configureTimelineRegion(activityScroll, 'customer-success-activity-heading')")
+    expect(detailSource).toContain('bind:divScroll={conversationScroll}')
+    expect(detailSource).toContain('bind:divScroll={activityScroll}')
+    expect(scrollerSource).toContain('@media (prefers-reduced-motion: reduce)')
   })
 
   it('includes the ticket identifier in the single row link accessible name', () => {

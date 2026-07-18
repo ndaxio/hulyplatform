@@ -92,3 +92,16 @@ it('ships genuine non-English lifecycle and reconciliation copy in every registe
     }
   }
 })
+
+it('keeps French operator copy translated except for intentional cognates', () => {
+  const langDir = join(__dirname, '../../lang')
+  const english = JSON.parse(readFileSync(join(langDir, 'en.json'), 'utf8')).string
+  const french = JSON.parse(readFileSync(join(langDir, 'fr.json'), 'utf8')).string
+  const intentionalCognates = ['Conversation', 'PublicVisibility']
+
+  const identicalKeys = Object.keys(english)
+    .filter((key) => english[key] === french[key])
+    .sort()
+
+  expect(identicalKeys).toEqual(intentionalCognates.sort())
+})

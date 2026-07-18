@@ -322,6 +322,24 @@ events, operators reading older events retain their position, and history
 prepending compensates for added height. Pagination failure preserves loaded
 events and exposes an in-place retry.
 
+## Production Interaction And Load Boundary
+
+Queue and mobile-detail tabs implement the complete horizontal two-tab keyboard
+contract, including Home and End. The actual transcript and activity scroll
+elements are focusable named regions, so browser-native keyboard scrolling is
+preserved without widening the shared Scroller component API. Search, clear,
+refresh, and composer recovery paths retain explicit names and deterministic
+focus targets; stale detached elements are never refocused.
+
+Activity history uses a stable `(createdOn, _id)` cursor and 100-row pages.
+Refresh, issue changes, and component teardown invalidate both transcript and
+activity pagination sequences before late results can mutate current state.
+Loaded audit evidence is not trimmed from the operator view. Instead,
+`content-visibility` and containment defer off-screen transcript and activity
+paint work, while the inbox continues to delegate queue row rendering to the
+native Huly viewlet. Authenticated large-data performance measurements remain a
+release gate rather than a source-only claim.
+
 ## Registration Surface
 
 The package family will require registration in:

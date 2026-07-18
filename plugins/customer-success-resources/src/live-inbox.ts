@@ -37,7 +37,7 @@ export interface LiveInboxQueryContext {
   search?: string
 }
 
-export type LiveInboxQueueNavigationKey = 'ArrowLeft' | 'ArrowRight'
+export type LiveInboxQueueNavigationKey = 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End'
 
 export const liveInboxQueueViews: LiveInboxQueueView[] = [
   'all',
@@ -130,6 +130,8 @@ export function buildLiveInboxQuery (
 }
 
 export function nextLiveInboxQueueView (current: LiveInboxQueueView, key: string): LiveInboxQueueView | undefined {
+  if (key === 'Home') return liveInboxQueueViews[0]
+  if (key === 'End') return liveInboxQueueViews[liveInboxQueueViews.length - 1]
   if (key !== 'ArrowLeft' && key !== 'ArrowRight') return undefined
   const index = liveInboxQueueViews.indexOf(current)
   const offset = key === 'ArrowRight' ? 1 : -1

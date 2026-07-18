@@ -14,7 +14,6 @@
   import {
     Breadcrumb,
     Button,
-    ButtonIcon,
     Header,
     IconRedo,
     Label,
@@ -318,10 +317,11 @@
       <FilterButton _class={tracker.class.Issue} space={projectId} {viewOptions} adaptive={doubleRow} />
     </svelte:fragment>
     <svelte:fragment slot="actions">
-      <ButtonIcon
+      <Button
         icon={IconRedo}
         size="small"
-        tooltip={{ label: customerSuccess.string.Refresh, direction: 'bottom' }}
+        kind="ghost"
+        label={customerSuccess.string.Refresh}
         disabled={refreshing}
         on:click={refreshInbox}
       />

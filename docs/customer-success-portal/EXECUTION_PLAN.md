@@ -152,6 +152,16 @@ after the checker records `verified: PASS` with evidence in `RUN_STATUS.md`.
    - External key: `ndax:engineering:task:customer-success-ui:production-states-and-accessibility`
    - Complete keyboard, focus, screen-reader, contrast, reduced-motion,
      English/French, responsive, virtualization, and load checks.
+   - Local checkpoint: queue and mobile-detail tabs support arrow plus Home/End
+     navigation; search, clear, refresh, and timeline regions have localized
+     accessible names; composer focus recovery rejects stale nodes; reduced
+     motion disables custom-scroller transitions. Activity history is bounded
+     to stable 100-row pages, stale page responses are invalidated on refresh
+     and teardown, and off-screen transcript/activity rows use browser-native
+     rendering containment without discarding regulated operator-visible data.
+   - Release evidence still required: authenticated keyboard and screen-reader
+     traces, WCAG contrast evidence, rendered English/French and 320/768/1280
+     viewport captures, and large-queue/long-timeline performance measurements.
 
 10. UAT, cutover, rollback, and launch sign-off
     - External key: `ndax:engineering:task:customer-success-ui:uat-cutover-and-launch-signoff`

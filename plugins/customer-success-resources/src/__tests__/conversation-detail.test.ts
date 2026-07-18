@@ -9,6 +9,8 @@ import type { Issue, Project } from '@hcengineering/tracker'
 
 import {
   buildConversationHistoryQuery,
+  buildConversationHistoryFindOptions,
+  buildConversationHistoryPageQuery,
   buildConversationEventFindOptions,
   buildConversationPageQuery,
   buildConversationIssueQuery,
@@ -24,6 +26,8 @@ import {
   emptyConversationComposerDrafts,
   encodeConversationCursor,
   mergeConversationEventPages,
+  mergeConversationHistoryPages,
+  nextConversationDetailLane,
   conversationComposerDraftsForIssue,
   resolveConversationScrollTop,
   sortConversationEntriesAscending,
@@ -89,6 +93,14 @@ describe('conversation detail helpers', () => {
     expect(closeConversationQuery(undefined)).toBeUndefined()
   })
 
+  it('moves mobile detail focus with arrow and boundary keys', () => {
+    expect(nextConversationDetailLane('conversation', 'ArrowRight')).toBe('activity')
+    expect(nextConversationDetailLane('activity', 'ArrowLeft')).toBe('conversation')
+    expect(nextConversationDetailLane('activity', 'Home')).toBe('conversation')
+    expect(nextConversationDetailLane('conversation', 'End')).toBe('activity')
+    expect(nextConversationDetailLane('conversation', 'Enter')).toBeUndefined()
+  })
+
   it('refuses to place malformed identifiers into navigation state', () => {
     const current = { filter: 'urgent' }
     expect(openConversationQuery(current, 'SUP-42<script>')).toBe(current)
@@ -134,6 +146,34 @@ describe('conversation detail helpers', () => {
         eventId: -1
       }
     })
+  })
+
+  it('bounds activity history and pages with a stable createdOn and id tuple', () => {
+    expect(buildConversationHistoryFindOptions()).toEqual({
+      limit: 100,
+      sort: { createdOn: -1, _id: -1 }
+    })
+    expect(
+      buildConversationHistoryPageQuery(projectId, issueId, {
+        _id: 'activity:42',
+        createdOn: 200
+      })
+    ).toEqual({
+      ...buildConversationHistoryQuery(projectId, issueId),
+      $or: [{ createdOn: { $lt: 200 } }, { createdOn: 200, _id: { $lt: 'activity:42' } }]
+    })
+  })
+
+  it('merges overlapping activity pages by immutable document identity', () => {
+    const first = {
+      _id: 'activity:1',
+      _class: 'activity:class:DocUpdateMessage',
+      space: projectId,
+      createdOn: 1
+    }
+    const second = { ...first, _id: 'activity:2', createdOn: 2 }
+
+    expect(mergeConversationHistoryPages([second], [first, second])).toEqual([first, second])
   })
 
   it.each([
@@ -205,7 +245,7 @@ describe('conversation detail helpers', () => {
         space: projectId,
         modifiedOn: 5
       }
-    ] satisfies ConversationEntryDoc[]
+    ] as unknown as ConversationEntryDoc[]
 
     const sorted = sortConversationEntriesAscending(entries)
 
@@ -233,7 +273,7 @@ describe('conversation detail helpers', () => {
       lane: string,
       visibility: string = 'public',
       schemaVersion: number = 1
-    ): ConversationEntryDoc => ({
+    ): any => ({
       _id: id as any,
       _class: 'customer-success:class:ConversationEvent' as any,
       space: projectId,
@@ -498,25 +538,25 @@ describe('conversation detail helpers', () => {
 
   it('uses modifiedOn and then _id as stable tie-breakers for ascending comparisons', () => {
     const earlierModified: Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'> = {
-      _id: 'entry-b',
+      _id: 'entry-b' as any,
       createdOn: 100,
       modifiedOn: 110
     }
 
     const laterModified: Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'> = {
-      _id: 'entry-a',
+      _id: 'entry-a' as any,
       createdOn: 100,
       modifiedOn: 120
     }
 
     const sameTimestampHigherId: Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'> = {
-      _id: 'entry-z',
+      _id: 'entry-z' as any,
       createdOn: 200,
       modifiedOn: 200
     }
 
     const sameTimestampLowerId: Pick<ConversationEntryDoc, '_id' | 'createdOn' | 'modifiedOn'> = {
-      _id: 'entry-a',
+      _id: 'entry-a' as any,
       createdOn: 200,
       modifiedOn: 200
     }
