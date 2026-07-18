@@ -122,6 +122,15 @@ after the checker records `verified: PASS` with evidence in `RUN_STATUS.md`.
    - External key: `ndax:engineering:task:customer-success-ui:restricted-note-visibility-gates`
    - Enforce restricted content on the data access path, not only in the UI.
    - Require compliance-owner sign-off before completion.
+   - Local checkpoint: a dedicated text-only restricted composer writes
+     `post_restricted_note` requests only to the restricted projection space;
+     UI visibility and adapter processing both require active restricted-space
+     SupportLead or Compliance membership, and successful delivery creates only
+     a restricted event. Cross-space duplicate request ids fail closed.
+   - Release evidence still required: authenticated allow/deny retrieval,
+     compliance-owner sign-off, export and retention policy, backup/restore
+     proof, and a live trace confirming no restricted plaintext reaches the
+     internal or customer lanes.
 
 8. Realtime refresh and stale-state recovery
    - External key: `ndax:engineering:task:customer-success-ui:realtime-refresh-and-resilience`

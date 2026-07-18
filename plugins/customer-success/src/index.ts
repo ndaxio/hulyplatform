@@ -77,14 +77,21 @@ export type SupportActionRequestAction =
   | 'reopen_case'
   | 'post_public_reply'
   | 'post_internal_note'
+  | 'post_restricted_note'
 export type SupportActionRequestState = 'pending' | 'processing' | 'succeeded' | 'failed' | 'superseded'
 export type SupportResolveReasonCode =
-  'customer_confirmed' | 'request_completed' | 'information_provided' | 'duplicate_request'
+  | 'customer_confirmed'
+  | 'request_completed'
+  | 'information_provided'
+  | 'duplicate_request'
 export type SupportReopenReasonCode =
-  'customer_follow_up' | 'incomplete_resolution' | 'new_information' | 'quality_review'
+  | 'customer_follow_up'
+  | 'incomplete_resolution'
+  | 'new_information'
+  | 'quality_review'
 export type SupportLifecycleReasonCode = SupportResolveReasonCode | SupportReopenReasonCode
 
-/** Human-created, system-consumed support action request in the internal projection space. */
+/** Human-created, system-consumed support action request in its visibility-scoped projection space. */
 export interface SupportActionRequest extends Doc {
   issueId: Ref<Issue>
   action: SupportActionRequestAction
@@ -303,6 +310,9 @@ const customerSuccess = plugin(customerSuccessId, {
     InternalNote: '' as IntlString,
     InternalNotePlaceholder: '' as IntlString,
     PostInternalNote: '' as IntlString,
+    RestrictedNote: '' as IntlString,
+    RestrictedNotePlaceholder: '' as IntlString,
+    PostRestrictedNote: '' as IntlString,
     ConversationComposerSending: '' as IntlString,
     ConversationComposerDelivered: '' as IntlString,
     ConversationComposerSuppressed: '' as IntlString,

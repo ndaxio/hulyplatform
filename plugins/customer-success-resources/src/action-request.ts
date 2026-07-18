@@ -122,7 +122,7 @@ export interface StatusTransitionControlState {
 }
 
 export type TerminalAction = 'resolve_case' | 'reopen_case'
-export type ConversationComposerAction = 'post_public_reply' | 'post_internal_note'
+export type ConversationComposerAction = 'post_public_reply' | 'post_internal_note' | 'post_restricted_note'
 export type ConversationComposerUiState = 'idle' | 'sending' | 'delivered' | 'suppressed' | 'failed'
 export const conversationComposerMessageMaxLength = 10000
 
@@ -165,6 +165,7 @@ export const supportStatusTargets: SupportStatusTarget[] = [
 export interface SupportActionRoleAssignments {
   supportAgent: AccountUuid[]
   supportLead: AccountUuid[]
+  compliance: AccountUuid[]
 }
 
 export function buildAssignLeadCandidateQuery (candidates: Array<Ref<Person>>): DocumentQuery<Employee> {
@@ -246,6 +247,14 @@ export function conversationMessageDeliveryId (
     throw new Error('conversation_composer_delivery_id_invalid')
   }
   return `ndax:support:delivery:${issueId}:${currentAccountUuid}:${action}:${clientDeliveryId}`
+}
+
+export function conversationComposerRequestSpace (
+  action: ConversationComposerAction,
+  internalSpaceId: Ref<ConversationProjectionSpace>,
+  restrictedSpaceId: Ref<ConversationProjectionSpace>
+): Ref<ConversationProjectionSpace> {
+  return action === 'post_restricted_note' ? restrictedSpaceId : internalSpaceId
 }
 
 export function normalizeConversationComposerMessage (message: string): Markup {
@@ -384,7 +393,13 @@ export function selectHydratedSupportActionRequestId (
   return [...requests]
     .filter((request) => {
       if (request.schemaVersion !== 1) return false
-      if (request.action === 'post_public_reply' || request.action === 'post_internal_note') return false
+      if (
+        request.action === 'post_public_reply' ||
+        request.action === 'post_internal_note' ||
+        request.action === 'post_restricted_note'
+      ) {
+        return false
+      }
       if (request.action === 'resolve_case' || request.action === 'reopen_case') {
         if (request.state !== 'succeeded') {
           return (
@@ -599,7 +614,7 @@ export async function submitTerminalSupportActionRequest (
 
 export async function submitConversationMessageSupportActionRequest (
   client: Pick<TxOperations, 'apply'>,
-  internalSpaceId: Ref<ConversationProjectionSpace>,
+  requestSpaceId: Ref<ConversationProjectionSpace>,
   issue: Pick<Issue, '_id' | 'status' | 'assignee' | 'modifiedOn'>,
   currentAccountUuid: AccountUuid,
   action: ConversationComposerAction,
@@ -628,10 +643,15 @@ export async function submitConversationMessageSupportActionRequest (
     schemaVersion: 1
   }
 
-  const suffix = action === 'post_public_reply' ? 'post-public-reply' : 'post-internal-note'
+  const suffix =
+    action === 'post_public_reply'
+      ? 'post-public-reply'
+      : action === 'post_internal_note'
+        ? 'post-internal-note'
+        : 'post-restricted-note'
   const ops = client.apply(requestId, `customer-success-${suffix}`)
   ops.notMatch(customerSuccess.class.SupportActionRequest, { _id: requestId })
-  await ops.createDoc(customerSuccess.class.SupportActionRequest, internalSpaceId, request, requestId)
+  await ops.createDoc(customerSuccess.class.SupportActionRequest, requestSpaceId, request, requestId)
   const committed = await ops.commit()
 
   return { requestId, committed }
@@ -644,11 +664,11 @@ export function resolveSupportActionRoleAssignments (
   const spaceType = space?.$lookup?.type as WithLookup<SpaceType> | undefined
   const roles = spaceType?.$lookup?.roles as Role[] | undefined
   if (space === undefined || spaceType === undefined || roles === undefined) {
-    return { supportAgent: [], supportLead: [] }
+    return { supportAgent: [], supportLead: [], compliance: [] }
   }
 
   const assignments = hierarchy.as(space, spaceType.targetClass) as unknown as RolesAssignment
-  const result: SupportActionRoleAssignments = { supportAgent: [], supportLead: [] }
+  const result: SupportActionRoleAssignments = { supportAgent: [], supportLead: [], compliance: [] }
 
   for (const role of roles) {
     if (role._id === customerSuccess.role.SupportAgent) {
@@ -656,6 +676,9 @@ export function resolveSupportActionRoleAssignments (
     }
     if (role._id === customerSuccess.role.SupportLead) {
       result.supportLead = [...(assignments[role._id] ?? [])]
+    }
+    if (role._id === customerSuccess.role.Compliance) {
+      result.compliance = [...(assignments[role._id] ?? [])]
     }
   }
 
@@ -677,6 +700,15 @@ export function isSupportLeadRoleMember (
   accountUuid: AccountUuid
 ): boolean {
   return resolveSupportActionRoleAssignments(space, hierarchy).supportLead.includes(accountUuid)
+}
+
+export function isRestrictedSupportActionRoleMember (
+  space: WithLookup<ConversationProjectionSpace> | undefined,
+  hierarchy: Hierarchy,
+  accountUuid: AccountUuid
+): boolean {
+  const assignments = resolveSupportActionRoleAssignments(space, hierarchy)
+  return assignments.supportLead.includes(accountUuid) || assignments.compliance.includes(accountUuid)
 }
 
 export function resolveClaimSelfControlState (
@@ -901,15 +933,15 @@ export function resolveConversationComposerControlState (
     (issue.status === supportHumanActiveStatus
       ? takeover.confirmed
       : takeover.projectionCurrent && takeover.claimOwner === issue.assignee)
-  const internalNoteVisible =
+  const nonPublicNoteVisible =
     canManageSupportActions &&
     currentEmployee !== undefined &&
     nonTerminalSupportStatuses.has(issue.status) &&
     issue.status !== supportResolvedStatus &&
     issue.status !== supportClosedStatus
-  const internalNoteEvidenceCurrent = internalNoteVisible && currentEmployeeActive
-  const visible = action === 'post_public_reply' ? publicReplyVisible : internalNoteVisible
-  const enabled = action === 'post_public_reply' ? publicReplyEvidenceCurrent : internalNoteEvidenceCurrent
+  const nonPublicNoteEvidenceCurrent = nonPublicNoteVisible && currentEmployeeActive
+  const visible = action === 'post_public_reply' ? publicReplyVisible : nonPublicNoteVisible
+  const enabled = action === 'post_public_reply' ? publicReplyEvidenceCurrent : nonPublicNoteEvidenceCurrent
 
   let status: ConversationComposerUiState = 'idle'
   if (submissionFailed || requestState === 'failed' || requestState === 'superseded') {
@@ -946,7 +978,13 @@ export function shouldClearConversationComposerDraft (
   deliveryEventObserved: boolean
 ): boolean {
   if (request === undefined) return false
-  if (request.action !== 'post_public_reply' && request.action !== 'post_internal_note') return false
+  if (
+    request.action !== 'post_public_reply' &&
+    request.action !== 'post_internal_note' &&
+    request.action !== 'post_restricted_note'
+  ) {
+    return false
+  }
   if (request.state !== 'succeeded') return false
   if (request.resultCode === 'suppressed') return true
   if (

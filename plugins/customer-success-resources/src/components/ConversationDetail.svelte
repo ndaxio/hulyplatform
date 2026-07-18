@@ -65,6 +65,7 @@
     buildSupportActionRequestHydrationQuery,
     buildSupportActionRequestQuery,
     buildAssignLeadCandidateQuery,
+    conversationComposerRequestSpace,
     conversationMessageDeliveryId,
     conversationMessageSupportActionRequestId,
     canonicalSupportAssignee,
@@ -74,6 +75,7 @@
     shouldClearConversationComposerDraft,
     claimSelfSupportActionRequestId,
     isLiveSessionConfirmed,
+    isRestrictedSupportActionRoleMember,
     shouldReleaseActiveSupportActionRequest,
     submitAssignAssigneeSupportActionRequest,
     submitClaimSelfSupportActionRequest,
@@ -94,7 +96,7 @@
 
   type DetailState = 'loading' | 'ready' | 'denied' | 'error'
   type SupportConversationEvent = ConversationEvent & ConversationEntryDoc
-  const composerActions = ['post_public_reply', 'post_internal_note'] as const
+  const composerActions = ['post_public_reply', 'post_internal_note', 'post_restricted_note'] as const
   type ComposerAction = (typeof composerActions)[number]
   interface VisibleMessage {
     message: SupportConversationEvent
@@ -111,12 +113,14 @@
   const issueQuery = createQuery()
   const statusQuery = createQuery()
   const liveSessionQuery = createQuery()
-  const projectionSpaceQuery = createQuery()
+  const internalProjectionSpaceQuery = createQuery()
+  const restrictedProjectionSpaceQuery = createQuery()
   const supportActionRequestQuery = createQuery()
   const supportActionRequestHydrationQuery = createQuery()
   const composerRequestQueries = {
     post_public_reply: createQuery(),
-    post_internal_note: createQuery()
+    post_internal_note: createQuery(),
+    post_restricted_note: createQuery()
   }
   const historyQuery = createQuery()
   const paginationRequest = new LatestConversationRequest()
@@ -130,6 +134,7 @@
   let issueStatus: IssueStatus | undefined
   let liveSessionState: LiveSessionState | undefined
   let internalProjectionSpace: WithLookup<ConversationProjectionSpace> | undefined
+  let restrictedProjectionSpace: WithLookup<ConversationProjectionSpace> | undefined
   let supportActionRequest: SupportActionRequest | undefined
   let subscribedIssueId: Ref<Issue> | undefined
   let visibleMessages: VisibleMessage[] = []
@@ -159,9 +164,11 @@
   let historyLoading = true
   let mobileLane: 'conversation' | 'activity' = 'conversation'
   let canManageSupportActions = false
+  let canManageRestrictedActions = false
   let canAssignLead = false
   let assigneeInActiveRoster = false
   let trackedInternalProjectionSpaceId: Ref<ConversationProjectionSpace> | undefined
+  let trackedRestrictedProjectionSpaceId: Ref<ConversationProjectionSpace> | undefined
   let trackedSupportActionRequestId: Ref<SupportActionRequest> | undefined
   let trackedSupportActionRequestHydrationKey: string | undefined
   let activeSupportActionRequestId: Ref<SupportActionRequest> | undefined
@@ -173,7 +180,11 @@
   let assignLeadCategories: AssigneeCategory[] = []
   let assignLeadSelection: Ref<Person> | null | undefined = undefined
   let canonicalIssueAssignee: Ref<Person> | null = null
-  let supportActionRoles = { supportAgent: [] as AccountUuid[], supportLead: [] as AccountUuid[] }
+  let supportActionRoles = {
+    supportAgent: [] as AccountUuid[],
+    supportLead: [] as AccountUuid[],
+    compliance: [] as AccountUuid[]
+  }
   let assignLeadLeadCandidates: Array<Ref<Person>> = []
   let assignLeadAgentCandidates: Array<Ref<Person>> = []
   let assignLeadCandidates: Array<Ref<Person>> = []
@@ -182,31 +193,38 @@
   let supportActionRequestObservationTimeout: ReturnType<typeof setTimeout> | undefined
   let composerDrafts: Record<ComposerAction, string> = {
     post_public_reply: '',
-    post_internal_note: ''
+    post_internal_note: '',
+    post_restricted_note: ''
   }
   let composerDeliveryIds: Record<ComposerAction, string | undefined> = {
     post_public_reply: undefined,
-    post_internal_note: undefined
+    post_internal_note: undefined,
+    post_restricted_note: undefined
   }
   let composerRequestIds: Record<ComposerAction, Ref<SupportActionRequest> | undefined> = {
     post_public_reply: undefined,
-    post_internal_note: undefined
+    post_internal_note: undefined,
+    post_restricted_note: undefined
   }
   let trackedComposerRequestIds: Record<ComposerAction, Ref<SupportActionRequest> | undefined> = {
     post_public_reply: undefined,
-    post_internal_note: undefined
+    post_internal_note: undefined,
+    post_restricted_note: undefined
   }
   let composerRequests: Record<ComposerAction, SupportActionRequest | undefined> = {
     post_public_reply: undefined,
-    post_internal_note: undefined
+    post_internal_note: undefined,
+    post_restricted_note: undefined
   }
   let composerSubmitting: Record<ComposerAction, boolean> = {
     post_public_reply: false,
-    post_internal_note: false
+    post_internal_note: false,
+    post_restricted_note: false
   }
   let composerSubmissionFailed: Record<ComposerAction, boolean> = {
     post_public_reply: false,
-    post_internal_note: false
+    post_internal_note: false,
+    post_restricted_note: false
   }
   let composerObservationTimeouts: Partial<Record<ComposerAction, ReturnType<typeof setTimeout>>> = {}
   let currentEmployeeActive = false
@@ -252,6 +270,27 @@
     false,
     false
   )
+  let restrictedNoteComposerState = resolveConversationComposerControlState(
+    'post_restricted_note',
+    {
+      _id: 'issue:none' as Ref<Issue>,
+      status: tracker.status.Backlog as Ref<IssueStatus>,
+      assignee: null,
+      modifiedOn: 0
+    },
+    resolveTakeoverChromeState({
+      _id: 'issue:none' as Ref<Issue>,
+      status: tracker.status.Backlog as Ref<IssueStatus>,
+      assignee: null,
+      modifiedOn: 0
+    }),
+    undefined,
+    undefined,
+    false,
+    false,
+    false,
+    false
+  )
 
   function uniquePersons (
     accounts: AccountUuid[],
@@ -267,7 +306,17 @@
   }
 
   function composerVisibility (action: ComposerAction): ConversationVisibilityLane {
-    return action === 'post_public_reply' ? 'public' : 'internal'
+    if (action === 'post_public_reply') return 'public'
+    if (action === 'post_restricted_note') return 'restricted'
+    return 'internal'
+  }
+
+  function composerRequestSpace (action: ComposerAction): Ref<ConversationProjectionSpace> {
+    return conversationComposerRequestSpace(action, projectionSpaceIds.internal, projectionSpaceIds.restricted)
+  }
+
+  function canManageComposerAction (action: ComposerAction): boolean {
+    return action === 'post_restricted_note' ? canManageRestrictedActions : canManageSupportActions
   }
 
   function conversationEventObserved (visibility: ConversationVisibilityLane, eventId: string | undefined): boolean {
@@ -337,31 +386,38 @@
     }
     composerDrafts = {
       post_public_reply: '',
-      post_internal_note: ''
+      post_internal_note: '',
+      post_restricted_note: ''
     }
     composerDeliveryIds = {
       post_public_reply: undefined,
-      post_internal_note: undefined
+      post_internal_note: undefined,
+      post_restricted_note: undefined
     }
     composerRequestIds = {
       post_public_reply: undefined,
-      post_internal_note: undefined
+      post_internal_note: undefined,
+      post_restricted_note: undefined
     }
     trackedComposerRequestIds = {
       post_public_reply: undefined,
-      post_internal_note: undefined
+      post_internal_note: undefined,
+      post_restricted_note: undefined
     }
     composerRequests = {
       post_public_reply: undefined,
-      post_internal_note: undefined
+      post_internal_note: undefined,
+      post_restricted_note: undefined
     }
     composerSubmitting = {
       post_public_reply: false,
-      post_internal_note: false
+      post_internal_note: false,
+      post_restricted_note: false
     }
     composerSubmissionFailed = {
       post_public_reply: false,
-      post_internal_note: false
+      post_internal_note: false,
+      post_restricted_note: false
     }
   }
 
@@ -468,11 +524,27 @@
   }
 
   function watchInternalProjectionSpace (spaceId: Ref<ConversationProjectionSpace>): void {
-    projectionSpaceQuery.query(
+    internalProjectionSpaceQuery.query(
       customerSuccess.class.ConversationProjectionSpace,
       { _id: spaceId },
       (result) => {
         internalProjectionSpace = result[0] as WithLookup<ConversationProjectionSpace> | undefined
+      },
+      {
+        limit: 1,
+        lookup: {
+          type: [core.class.SpaceType, { _id: { roles: core.class.Role } }]
+        }
+      }
+    )
+  }
+
+  function watchRestrictedProjectionSpace (spaceId: Ref<ConversationProjectionSpace>): void {
+    restrictedProjectionSpaceQuery.query(
+      customerSuccess.class.ConversationProjectionSpace,
+      { _id: spaceId },
+      (result) => {
+        restrictedProjectionSpace = result[0] as WithLookup<ConversationProjectionSpace> | undefined
       },
       {
         limit: 1,
@@ -539,7 +611,7 @@
     trackedComposerRequestIds = { ...trackedComposerRequestIds, [action]: requestId }
     composerRequestQueries[action].query(
       customerSuccess.class.SupportActionRequest,
-      buildSupportActionRequestQuery(projectionSpaceIds.internal, requestId, target._id),
+      buildSupportActionRequestQuery(composerRequestSpace(action), requestId, target._id),
       (result) => {
         if (issue?._id !== target._id || trackedComposerRequestIds[action] !== requestId) return
         const observed = result[0]
@@ -703,7 +775,8 @@
     issueQuery.refreshClient()
     statusQuery.refreshClient()
     liveSessionQuery.refreshClient()
-    projectionSpaceQuery.refreshClient()
+    internalProjectionSpaceQuery.refreshClient()
+    restrictedProjectionSpaceQuery.refreshClient()
     supportActionRequestQuery.refreshClient()
     supportActionRequestHydrationQuery.refreshClient()
     historyQuery.refreshClient()
@@ -962,7 +1035,7 @@
       composerRequests[action],
       currentEmployee,
       currentEmployeeActive,
-      canManageSupportActions,
+      canManageComposerAction(action),
       composerSubmitting[action],
       composerSubmissionFailed[action]
     )
@@ -973,7 +1046,7 @@
     try {
       const { requestId, committed } = await submitConversationMessageSupportActionRequest(
         client,
-        projectionSpaceIds.internal,
+        composerRequestSpace(action),
         { ...issue, assignee: canonicalIssueAssignee },
         currentAccount.uuid,
         action,
@@ -1002,6 +1075,11 @@
   $: canManageSupportActions =
     supportActionRoles.supportAgent.includes(currentAccount.uuid) ||
     supportActionRoles.supportLead.includes(currentAccount.uuid)
+  $: canManageRestrictedActions = isRestrictedSupportActionRoleMember(
+    restrictedProjectionSpace,
+    hierarchy,
+    currentAccount.uuid
+  )
   $: canAssignLead = supportActionRoles.supportLead.includes(currentAccount.uuid)
   $: currentEmployeeActive = currentEmployee !== undefined && $employeeByIdStore.get(currentEmployee)?.active === true
   $: publicReplyComposerState = resolveConversationComposerControlState(
@@ -1052,6 +1130,30 @@
     composerSubmitting.post_internal_note,
     composerSubmissionFailed.post_internal_note
   )
+  $: restrictedNoteComposerState = resolveConversationComposerControlState(
+    'post_restricted_note',
+    {
+      _id: issue?._id ?? ('issue:none' as Ref<Issue>),
+      status: issue?.status ?? (tracker.status.Backlog as Ref<IssueStatus>),
+      assignee: canonicalIssueAssignee,
+      modifiedOn: issue?.modifiedOn ?? 0
+    },
+    resolveTakeoverChromeState(
+      {
+        _id: issue?._id ?? ('issue:none' as Ref<Issue>),
+        status: issue?.status ?? (tracker.status.Backlog as Ref<IssueStatus>),
+        assignee: canonicalIssueAssignee,
+        modifiedOn: issue?.modifiedOn ?? 0
+      },
+      liveSessionState
+    ),
+    composerRequests.post_restricted_note,
+    currentEmployee,
+    currentEmployeeActive,
+    canManageRestrictedActions,
+    composerSubmitting.post_restricted_note,
+    composerSubmissionFailed.post_restricted_note
+  )
   $: assignLeadLeadCandidates = uniquePersons(supportActionRoles.supportLead, $employeeRefByAccountUuidStore)
   $: assignLeadAgentCandidates = uniquePersons(supportActionRoles.supportAgent, $employeeRefByAccountUuidStore)
   $: assignLeadCategories = [
@@ -1093,6 +1195,10 @@
     trackedInternalProjectionSpaceId = projectionSpaceIds.internal
     watchInternalProjectionSpace(projectionSpaceIds.internal)
   }
+  $: if (trackedRestrictedProjectionSpaceId !== projectionSpaceIds.restricted) {
+    trackedRestrictedProjectionSpaceId = projectionSpaceIds.restricted
+    watchRestrictedProjectionSpace(projectionSpaceIds.restricted)
+  }
   $: if (
     shouldClearConversationComposerDraft(
       composerRequests.post_public_reply,
@@ -1116,6 +1222,18 @@
   ) {
     composerDrafts = { ...composerDrafts, post_internal_note: '' }
     composerDeliveryIds = { ...composerDeliveryIds, post_internal_note: undefined }
+  }
+  $: if (
+    shouldClearConversationComposerDraft(
+      composerRequests.post_restricted_note,
+      conversationEventObserved(
+        composerVisibility('post_restricted_note'),
+        composerRequests.post_restricted_note?.resultEventId
+      )
+    )
+  ) {
+    composerDrafts = { ...composerDrafts, post_restricted_note: '' }
+    composerDeliveryIds = { ...composerDeliveryIds, post_restricted_note: undefined }
   }
   $: if (state === 'ready' && issue !== undefined) {
     const nextTrackedRequestId =
@@ -1351,6 +1469,24 @@
               }}
               on:submit={() => {
                 void submitComposer('post_internal_note')
+              }}
+            />
+          {/if}
+          {#if restrictedNoteComposerState.visible}
+            <ConversationComposer
+              action="post_restricted_note"
+              title={customerSuccess.string.RestrictedNote}
+              placeholder={customerSuccess.string.RestrictedNotePlaceholder}
+              submitLabel={customerSuccess.string.PostRestrictedNote}
+              draft={composerDrafts.post_restricted_note}
+              disabled={!restrictedNoteComposerState.canSubmit}
+              busy={restrictedNoteComposerState.busy}
+              status={restrictedNoteComposerState.status}
+              on:draft={(event) => {
+                setComposerDraft('post_restricted_note', event.detail)
+              }}
+              on:submit={() => {
+                void submitComposer('post_restricted_note')
               }}
             />
           {/if}

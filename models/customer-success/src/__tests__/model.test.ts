@@ -119,7 +119,7 @@ describe('Customer Success application model', () => {
     expect(
       readFileSync(join(__dirname, '..', '..', '..', '..', 'plugins', 'customer-success', 'src', 'index.ts'), 'utf8')
     ).toMatch(
-      /SupportActionRequestAction =[\s\S]*?'resolve_case'[\s\S]*?'reopen_case'[\s\S]*?'post_public_reply'[\s\S]*?'post_internal_note'/
+      /SupportActionRequestAction =[\s\S]*?'resolve_case'[\s\S]*?'reopen_case'[\s\S]*?'post_public_reply'[\s\S]*?'post_internal_note'[\s\S]*?'post_restricted_note'/
     )
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseId\?: string/)
     expect(modelSource).toMatch(/class TSupportActionRequest[\s\S]*?processingLeaseExpiresAt\?: Timestamp/)

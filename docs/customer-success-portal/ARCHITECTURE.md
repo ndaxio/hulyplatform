@@ -1,6 +1,6 @@
 # Customer Success Portal Architecture
 
-Status: CSSC-11 implemented with rendered certification pending; CSSC-12 projection detail tracer reads three authorized projection lanes with pagination helpers; CSSC-13 queue views and persisted operator state are implemented locally; CSSC-14 takeover-state chrome and secured live-session projection are locally certified, with authenticated rendering and deployment wiring still pending
+Status: CSSC-11 through CSSC-17 are implemented locally; authenticated rendering, compliance sign-off, deployment wiring, and live evidence remain pending
 
 ## Decision
 
@@ -262,6 +262,23 @@ to active SupportAgent/SupportLead roster members on non-terminal support
 tickets. Each draft receives a stable in-memory `deliveryId`; retries preserve
 that id until trusted sent/already-sent event reconciliation or explicit
 suppression clears the draft.
+
+CSSC-17 adds a third, visually distinct Restricted note composer. It is
+fail-closed unless the current active Employee is assigned SupportLead or
+Compliance in the restricted projection space. Its `post_restricted_note`
+request, plaintext, processing lease, outcome, and resulting ConversationEvent
+remain in that restricted space; no internal request/event duplicate and no
+customer delivery comment are created. The adapter independently requires an
+immutable creator with `support-lead`, `compliance-lead`, or `fraud-review`
+authority who also remains in the restricted SupportLead/Compliance roster.
+Retries converge on the same delivery/event identity, and the browser clears
+the memory-only draft only after observing the trusted restricted event.
+
+UI role checks are advisory defense in depth. Huly restricted-space membership
+is the read/write data boundary, and the adapter rechecks role, active Employee,
+request space, immutable creator, payload digest, issue snapshot, and restricted
+roster before recording the note. Compliance-owner sign-off and authenticated
+lead/compliance/agent denial evidence remain release gates.
 
 The controls remain hidden until the adapter and orchestrator prerequisites in
 the lifecycle contract are present: support tickets cannot use the generic

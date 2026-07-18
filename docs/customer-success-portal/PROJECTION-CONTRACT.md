@@ -18,9 +18,11 @@ system-written `customer-success:class:LiveSessionState` document per support
 issue in the internal projection space. It is never inferred from transcript
 text and never used to override the authoritative Tracker issue status.
 
-Human operators request claim-side effects by creating one
-`customer-success:class:SupportActionRequest` document in the internal
-projection space through the ordinary authenticated Huly client. The browser
+Human operators request support side effects by creating one
+`customer-success:class:SupportActionRequest` document through the ordinary
+authenticated Huly client. Ordinary actions use the internal projection space;
+`post_restricted_note` uses the restricted projection space so its plaintext is
+never copied into the broader internal lane. The browser
 never calls the adapter directly and never receives adapter credentials or
 tokens. The request document is consumed asynchronously by the trusted adapter,
 which derives the immutable creator from Huly transaction identity and ignores
@@ -121,9 +123,10 @@ CSSC-15D reserves distinct terminal lifecycle ids:
 
 `ndax:support:action-request:<issueId>:<currentAccountUuid>:<resolve_case|reopen_case>:<requestedStatus>:<reasonCode>:<expectedModifiedOn>`
 
-CSSC-16 adds separate native composer ids for public replies and internal notes:
+CSSC-16 and CSSC-17 add separate native composer ids for public replies,
+internal notes, and restricted notes:
 
-`ndax:support:action-request:<issueId>:<currentAccountUuid>:<post_public_reply|post_internal_note>:<deliveryId>:<expectedModifiedOn>`
+`ndax:support:action-request:<issueId>:<currentAccountUuid>:<post_public_reply|post_internal_note|post_restricted_note>:<deliveryId>:<expectedModifiedOn>`
 
 Their source/target matrix, reason allowlists, role rules, recovery marker, and
 orchestrator behavior are normative in `TERMINAL-LIFECYCLE-CONTRACT.md`.
@@ -131,12 +134,14 @@ Closed and Escalated have no schema-v1 browser transition.
 
 The browser creates it through `client.apply(requestId).notMatch(...)` guarded
 by the globally unique exact `_id`. Its reactive read subscription additionally
-requires the exact internal `space`, `issueId`, and `schemaVersion: 1`.
-On refresh, request discovery is scoped to the current account encoded in
-`_id`, the exact issue/internal space, and schema. Deterministic latest-relevant
-selection is followed by an exact-id subscription. Succeeded rows hydrate only
-while their requested outcome still matches issue truth; stale terminal
-conflict evidence remains visible without blocking a newer-snapshot action.
+requires the exact action-selected `space`, `issueId`, and `schemaVersion: 1`.
+On refresh, ordinary takeover/status request discovery is scoped to the current
+account encoded in `_id`, the exact issue/internal space, and schema.
+Deterministic latest-relevant selection is followed by an exact-id subscription.
+Succeeded rows hydrate only while their requested outcome still matches issue
+truth; stale terminal conflict evidence remains visible without blocking a
+newer-snapshot action. Composer drafts are memory-only and each active composer
+watches its exact request in the action-selected projection space.
 After the browser submits a new exact id, it keeps the optimistic lock until
 that exact row is observed or a bounded observation timeout/errors ends the
 attempt. An empty first subscription result is not success and must not unlock
@@ -145,9 +150,9 @@ duplicate submits.
 | Field | Contract |
 |---|---|
 | `_id` | Deterministic id built from issue id, current account uuid, action, expected target person when the action needs one, and expected modified time. |
-| `space` | Exact internal projection space. |
+| `space` | Exact internal projection space, except `post_restricted_note`, which must use the exact restricted projection space. |
 | `issueId` | Exact Huly support issue reference. |
-| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, `transition_status`, `resolve_case`, `reopen_case`, `post_public_reply`, or `post_internal_note`. |
+| `action` | `claim_self`, `assign_assignee`, `reassign_assignee`, `transition_status`, `resolve_case`, `reopen_case`, `post_public_reply`, `post_internal_note`, or `post_restricted_note`. |
 | `requestedAssignee` | Huly Person requested for claim/assignment actions; for status/terminal actions the unchanged canonical assignee bound to the request snapshot; absent for composer actions, whose creator is proven from the immutable Huly create transaction and exact account-bound request id. |
 | `requestedStatus` | Required for `transition_status`, `resolve_case`, and `reopen_case`; absent for claim/assignment/composer actions. |
 | `expectedStatus` | Exact issue status the request expects. |
@@ -200,7 +205,9 @@ forbids, to every human role in the space type.
 
 `SupportActionRequest` is intentionally different:
 
-- humans may create it through the internal projection space;
+- humans may create ordinary actions through the internal projection space;
+- only restricted-space SupportLead and Compliance members see and create
+  `post_restricted_note` in the restricted projection space;
 - humans must be forbidden from update/remove;
 - the browser shows claim-self controls only to SupportAgent and SupportLead
   role members; compliance-only viewers must not see those controls;
@@ -235,8 +242,13 @@ forbids, to every human role in the space type.
 - for `post_internal_note`, the browser again creates only a
   `SupportActionRequest` in the internal projection space. The immutable
   creator must remain an active SupportAgent or SupportLead roster member on a
-  non-terminal support ticket. Restricted notes, attachments, link previews,
-  and composer mode dropdowns are outside schema v1.
+  non-terminal support ticket. Attachments, link previews, and composer mode
+  dropdowns are outside schema v1.
+- for `post_restricted_note`, both request and event use the restricted
+  projection space. The immutable creator must remain an active Employee,
+  hold `support-lead`, `compliance-lead`, or `fraud-review`, and remain in the
+  restricted SupportLead/Compliance roster. The adapter writes no customer
+  delivery comment and no internal event copy.
 - for `resolve_case`, Human Active requires a current acknowledged live-session
   projection. Waiting on Customer and Waiting on Internal require a fresh
   issue-bound projection whose source status, observed time, and projected
@@ -287,7 +299,9 @@ The trusted adapter writer must:
    events linked by source metadata retained outside the browser contract.
 7. Upsert live-session state only after canonical support state is known. Failed
    conditional claim/ack/release writes must not advance the projection.
-8. Consume `SupportActionRequest` only from the exact internal projection space.
+8. Consume ordinary `SupportActionRequest` rows only from the exact internal
+   projection space and `post_restricted_note` only from the exact restricted
+   projection space. Poll summaries must never include message plaintext.
    Derive creator identity from the persisted Huly transaction, verify role and
    target roster membership, verify expected status/assignee/modifiedOn, then
    invoke the existing CAS claim/ack flow or a conservative lead assignee

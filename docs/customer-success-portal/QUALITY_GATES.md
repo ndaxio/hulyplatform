@@ -32,6 +32,7 @@ but UI delivery must prove its own data boundaries and live behavior.
 | Performance | Large queue, long transcript, bounded subscriptions, stable scrolling, and agreed latency budgets. |
 | Audit | Correlation chain from Huly action through customer delivery outcome without transcript leakage in logs. |
 | Unauthorized visibility | SupportActionRequest controls and request-state chrome are absent for non-agent/non-lead viewers. |
+| Restricted authorship | Only active restricted-space SupportLead/Compliance members see the composer; adapter role and roster checks fail closed; request/event plaintext never enters internal or customer lanes. |
 | Retention and attachments | Authorized download, file policy, scanning, retention, legal hold, export, and restore evidence before attachment release. |
 | Live tracer | Two-agent claim, takeover, reply, internal note, restricted denial, reconnect, and retry against live systems. |
 
@@ -40,8 +41,9 @@ but UI delivery must prove its own data boundaries and live behavior.
 These do not block the read-only CSSC-11 tracer but must remain red until their
 own milestone closes:
 
-1. Restricted-note storage, export, and retrieval boundaries require explicit
-   implementation and compliance sign-off.
+1. Restricted-note storage and authorship are implemented locally with
+   role/space mutation tests. Authenticated retrieval/denial, export, retention,
+   backup/restore, and compliance-owner sign-off remain red.
 2. Attachment scanning, retention, legal hold, and restore evidence are not part
    of the first UI slice and must remain disabled until certified.
 3. Stable end-to-end message ids and cursors must be verified before the public

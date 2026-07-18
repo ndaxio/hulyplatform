@@ -21,9 +21,11 @@ import {
   buildSupportActionRequestQuery,
   claimSelfSupportActionRequestId,
   conversationMessageDeliveryId,
+  conversationComposerRequestSpace,
   conversationMessageSupportActionRequestId,
   isTerminalReasonAllowed,
   isSupportLeadRoleMember,
+  isRestrictedSupportActionRoleMember,
   normalizeConversationComposerMessage,
   resolveConversationComposerControlState,
   resolveAssignLeadControlState,
@@ -433,6 +435,44 @@ describe('Customer Success support action request helpers', () => {
     expect(commit).toHaveBeenCalled()
   })
 
+  it('stores restricted composer requests only in the restricted projection space', async () => {
+    const notMatch = jest.fn().mockReturnThis()
+    const createDoc = jest.fn().mockResolvedValue('request-id')
+    const commit = jest.fn().mockResolvedValue({ result: true, time: 3, serverTime: 2 })
+    const apply = jest.fn().mockReturnValue({ notMatch, createDoc, commit })
+    const deliveryId = conversationMessageDeliveryId(
+      'issue-1' as Ref<Issue>,
+      'account-1' as AccountUuid,
+      'post_restricted_note',
+      'delivery-restricted-1'
+    )
+
+    const result = await submitConversationMessageSupportActionRequest(
+      { apply } as any,
+      'ndax:support:projection:restricted' as Ref<ConversationProjectionSpace>,
+      issue('ndax:status:support:HumanActive', 'person-9' as Ref<Person>),
+      'account-1' as AccountUuid,
+      'post_restricted_note',
+      deliveryId,
+      'Compliance review note.'
+    )
+
+    expect(result.requestId).toContain(':post_restricted_note:')
+    expect(apply).toHaveBeenCalledWith(result.requestId, 'customer-success-post-restricted-note')
+    expect(createDoc).toHaveBeenCalledWith(
+      customerSuccess.class.SupportActionRequest,
+      'ndax:support:projection:restricted',
+      expect.objectContaining({
+        action: 'post_restricted_note',
+        message: 'Compliance review note.',
+        deliveryId,
+        idempotencyKey: result.requestId
+      }),
+      result.requestId
+    )
+    expect(createDoc.mock.calls[0][2]).not.toHaveProperty('requestedAssignee')
+  })
+
   it('creates deterministic reassignment requests with the exact prior assignee snapshot', async () => {
     const notMatch = jest.fn().mockReturnThis()
     const createDoc = jest.fn().mockResolvedValue('request-id')
@@ -479,10 +519,24 @@ describe('Customer Success support action request helpers', () => {
     expect(isSupportLeadRoleMember(space, hierarchy as any, 'lead-account' as AccountUuid)).toBe(true)
     expect(isSupportLeadRoleMember(space, hierarchy as any, 'agent-account' as AccountUuid)).toBe(false)
     expect(isSupportLeadRoleMember(space, hierarchy as any, 'compliance-account' as AccountUuid)).toBe(false)
+    expect(isRestrictedSupportActionRoleMember(space, hierarchy as any, 'lead-account' as AccountUuid)).toBe(true)
+    expect(isRestrictedSupportActionRoleMember(space, hierarchy as any, 'compliance-account' as AccountUuid)).toBe(true)
+    expect(isRestrictedSupportActionRoleMember(space, hierarchy as any, 'agent-account' as AccountUuid)).toBe(false)
+    expect(isRestrictedSupportActionRoleMember(undefined, hierarchy as any, 'lead-account' as AccountUuid)).toBe(false)
     expect(resolveSupportActionRoleAssignments(space, hierarchy as any)).toEqual({
       supportAgent: ['agent-account'],
-      supportLead: ['lead-account']
+      supportLead: ['lead-account'],
+      compliance: ['compliance-account']
     })
+  })
+
+  it('routes only restricted-note requests to the restricted projection space', () => {
+    const internal = 'ndax:support:projection:internal' as Ref<ConversationProjectionSpace>
+    const restricted = 'ndax:support:projection:restricted' as Ref<ConversationProjectionSpace>
+
+    expect(conversationComposerRequestSpace('post_public_reply', internal, restricted)).toBe(internal)
+    expect(conversationComposerRequestSpace('post_internal_note', internal, restricted)).toBe(internal)
+    expect(conversationComposerRequestSpace('post_restricted_note', internal, restricted)).toBe(restricted)
   })
 
   it('keeps Needs Human and Reopened tickets claimable even though they are not live-session stages', () => {
@@ -645,7 +699,7 @@ describe('Customer Success support action request helpers', () => {
     expect(() => normalizeConversationComposerMessage('x'.repeat(10001))).toThrow('conversation_composer_too_long')
   })
 
-  it('keeps public reply and internal note eligibility separate and fail-closed', () => {
+  it('keeps public reply and non-public note eligibility separate and fail-closed', () => {
     const humanActiveOwner = issue('ndax:status:support:HumanActive', 'person-1' as Ref<Person>)
     const waitingOwner = issue('ndax:status:support:WaitingOnCustomer', 'person-1' as Ref<Person>)
     const confirmed = { ...resolveTakeoverChromeState(humanActiveOwner), confirmed: true }
@@ -724,6 +778,34 @@ describe('Customer Success support action request helpers', () => {
         false
       )
     ).toEqual(expect.objectContaining({ visible: false, canSubmit: false }))
+
+    const restrictedTarget = issue('ndax:status:support:NeedsHuman', 'person-9' as Ref<Person>)
+    expect(
+      resolveConversationComposerControlState(
+        'post_restricted_note',
+        restrictedTarget,
+        resolveTakeoverChromeState(restrictedTarget),
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        true,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: true, enabled: true, canSubmit: true }))
+    expect(
+      resolveConversationComposerControlState(
+        'post_restricted_note',
+        restrictedTarget,
+        resolveTakeoverChromeState(restrictedTarget),
+        undefined,
+        'person-1' as Ref<Person>,
+        true,
+        false,
+        false,
+        false
+      )
+    ).toEqual(expect.objectContaining({ visible: false, enabled: false, canSubmit: false }))
   })
 
   it('maps native composer state into the five UI outcomes', () => {
@@ -865,6 +947,28 @@ describe('Customer Success support action request helpers', () => {
     expect(
       shouldClearConversationComposerDraft(actionRequest({ action: 'post_internal_note', state: 'failed' }), false)
     ).toBe(false)
+    expect(
+      shouldClearConversationComposerDraft(
+        actionRequest({
+          action: 'post_restricted_note',
+          state: 'succeeded',
+          resultCode: 'recorded',
+          resultEventId: 'evt-restricted-1'
+        }),
+        false
+      )
+    ).toBe(false)
+    expect(
+      shouldClearConversationComposerDraft(
+        actionRequest({
+          action: 'post_restricted_note',
+          state: 'succeeded',
+          resultCode: 'recorded',
+          resultEventId: 'evt-restricted-1'
+        }),
+        true
+      )
+    ).toBe(true)
   })
 
   it('keeps request outcome state visible after control eligibility changes without exposing it to unauthorized viewers', () => {
@@ -878,6 +982,7 @@ describe('Customer Success support action request helpers', () => {
     expect(shouldShowSupportActionRequestState('transition_status', true, false, true)).toBe(false)
     expect(shouldShowSupportActionRequestState('post_public_reply', true, true, true)).toBe(false)
     expect(shouldShowSupportActionRequestState('post_internal_note', true, true, true)).toBe(false)
+    expect(shouldShowSupportActionRequestState('post_restricted_note', true, true, true)).toBe(false)
     expect(shouldShowSupportActionRequestState(undefined, true, true, true)).toBe(false)
   })
 

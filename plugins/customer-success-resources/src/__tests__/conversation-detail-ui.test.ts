@@ -156,15 +156,23 @@ describe('conversation detail UI security contract', () => {
     }
   })
 
-  it('renders separate native public-reply and internal-note composers under the transcript without raw delivery paths', () => {
+  it('renders separate native public, internal, and restricted composers without raw delivery paths', () => {
     expect(detailSource).toContain("import ConversationComposer from './ConversationComposer.svelte'")
     expect(detailSource).toContain('<ConversationComposer')
     expect(detailSource).toContain('action="post_public_reply"')
     expect(detailSource).toContain('action="post_internal_note"')
+    expect(detailSource).toContain('action="post_restricted_note"')
     expect(detailSource).toContain('composerDrafts.post_public_reply')
     expect(detailSource).toContain('composerDrafts.post_internal_note')
+    expect(detailSource).toContain('composerDrafts.post_restricted_note')
     expect(detailSource).toContain('customerSuccess.string.PublicReply')
     expect(detailSource).toContain('customerSuccess.string.InternalNote')
+    expect(detailSource).toContain('customerSuccess.string.RestrictedNote')
+    expect(detailSource).toContain(
+      'conversationComposerRequestSpace(action, projectionSpaceIds.internal, projectionSpaceIds.restricted)'
+    )
+    expect(detailSource).toContain('isRestrictedSupportActionRoleMember(')
+    expect(detailSource).toContain('restrictedProjectionSpace,')
     expect(detailSource).toContain('submitConversationMessageSupportActionRequest(')
     expect(detailSource).toContain('conversationMessageSupportActionRequestId(')
     expect(detailSource).toContain('generateId()')
@@ -196,7 +204,8 @@ describe('conversation detail UI security contract', () => {
     expect(composerSource).not.toMatch(/localStorage|sessionStorage|indexedDB/)
     expect(composerSource).not.toContain('Attachment')
     expect(composerSource).not.toContain('LinkPreview')
-    expect(composerSource).not.toContain('restricted')
+    expect(composerSource).toContain("class:restricted={action === 'post_restricted_note'}")
+    expect(composerSource).toContain("data-visibility={action === 'post_restricted_note'")
     expect(composerSource).not.toContain('<select')
     expect(composerSource).not.toContain('dropdown')
   })

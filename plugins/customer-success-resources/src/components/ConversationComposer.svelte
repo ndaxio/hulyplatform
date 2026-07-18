@@ -12,7 +12,7 @@
 
   import { conversationComposerMessageMaxLength, type ConversationComposerUiState } from '../action-request'
 
-  type ComposerAction = 'post_public_reply' | 'post_internal_note'
+  type ComposerAction = 'post_public_reply' | 'post_internal_note' | 'post_restricted_note'
 
   export let action: ComposerAction
   export let title: IntlString
@@ -76,6 +76,12 @@
 
 <form
   class="composer"
+  class:restricted={action === 'post_restricted_note'}
+  data-visibility={action === 'post_restricted_note'
+    ? 'restricted'
+    : action === 'post_internal_note'
+      ? 'internal'
+      : 'public'}
   aria-labelledby={titleId}
   aria-describedby={statusId}
   aria-busy={busy}
@@ -118,6 +124,10 @@
     border: 1px solid var(--theme-divider-color);
     border-radius: 6px;
     background: var(--theme-panel-color, transparent);
+
+    &.restricted {
+      border-left: 3px solid var(--theme-warning-color, var(--theme-content-color));
+    }
   }
 
   .composer-header {
